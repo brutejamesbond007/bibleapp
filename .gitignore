@@ -1,0 +1,20 @@
+# Compiled Java files
+*.class
+
+# Portable Java runtimes
+runtime-windows/
+runtime-linux/
+runtime-macos/
+
+# SQLite personal/user database
+data/bible-reader.db
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

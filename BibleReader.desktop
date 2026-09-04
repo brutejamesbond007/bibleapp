@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Chronological Bible Reader
+Comment=Open the Chronological Bible Reader
+Exec=/home/u-gene/bibleyear/run-bible-reader.sh
+Icon=accessories-text-editor
+Terminal=false
+Categories=Education;
