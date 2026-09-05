@@ -180,20 +180,12 @@ public class BibleReader extends Application {
     private WebEngine chartsWebEngine;
     private final Map<String, String> chartEntries = new LinkedHashMap<>();
 
-    private Tab hebrewTab;
-    private Tab greekTab;
-
-    private Label hebrewTitleLabel;
-    private Label hebrewStatusLabel;
-    private ComboBox<String> hebrewSelector;
-    private WebView hebrewWebView;
-    private WebEngine hebrewWebEngine;
-
-    private Label greekTitleLabel;
-    private Label greekStatusLabel;
-    private ComboBox<String> greekSelector;
-    private WebView greekWebView;
-    private WebEngine greekWebEngine;
+    private Tab originalLanguageTab;
+    private Label originalLanguageTitleLabel;
+    private Label originalLanguageStatusLabel;
+    private ComboBox<String> originalLanguageSelector;
+    private WebView originalLanguageWebView;
+    private WebEngine originalLanguageWebEngine;
 
     private ComboBox<String> studyReferenceSelector;
     private Label studyNotesTitleLabel;
@@ -859,78 +851,42 @@ public class BibleReader extends Application {
         VBox.setVgrow(chartsWebView, Priority.ALWAYS);
 
         // ------------------------------------------------------------
-        // Bible Hub Hebrew Interlinear
+        // Bible Hub Hebrew / Greek Interlinear
         // ------------------------------------------------------------
-        hebrewTitleLabel = new Label("Hebrew Concordance");
-        hebrewTitleLabel.setFont(
+        originalLanguageTitleLabel =
+                new Label("Hebrew / Greek Concordance");
+        originalLanguageTitleLabel.setFont(
                 Font.font("Serif", FontWeight.BOLD, 18)
         );
 
-        hebrewSelector = new ComboBox<>();
-        hebrewSelector.setPromptText(
-                "Choose an Old Testament chapter"
+        originalLanguageSelector = new ComboBox<>();
+        originalLanguageSelector.setPromptText(
+                "Choose a chapter from this reading"
         );
-        hebrewSelector.setMaxWidth(Double.MAX_VALUE);
-        hebrewSelector.setOnAction(
-                event -> loadSelectedHebrewChapter()
+        originalLanguageSelector.setMaxWidth(Double.MAX_VALUE);
+        originalLanguageSelector.setOnAction(
+                event -> loadSelectedOriginalLanguageChapter()
         );
 
-        hebrewStatusLabel = new Label(
-                "Select an Old Testament reading to open its Hebrew interlinear."
+        originalLanguageStatusLabel = new Label(
+                "Select a Bible reading to open its Hebrew or Greek interlinear."
         );
-        hebrewStatusLabel.setWrapText(true);
+        originalLanguageStatusLabel.setWrapText(true);
 
-        hebrewWebView = new WebView();
-        hebrewWebEngine = hebrewWebView.getEngine();
-        hebrewWebView.setMinHeight(150);
+        originalLanguageWebView = new WebView();
+        originalLanguageWebEngine = originalLanguageWebView.getEngine();
+        originalLanguageWebView.setMinHeight(150);
 
-        VBox hebrewContent = new VBox(
+        VBox originalLanguageContent = new VBox(
                 8,
-                hebrewTitleLabel,
-                hebrewSelector,
-                hebrewStatusLabel,
-                hebrewWebView
+                originalLanguageTitleLabel,
+                originalLanguageSelector,
+                originalLanguageStatusLabel,
+                originalLanguageWebView
         );
-        hebrewContent.setPadding(new Insets(10));
-        hebrewContent.setMinHeight(180);
-        VBox.setVgrow(hebrewWebView, Priority.ALWAYS);
-
-        // ------------------------------------------------------------
-        // Bible Hub Greek Interlinear
-        // ------------------------------------------------------------
-        greekTitleLabel = new Label("Greek Concordance");
-        greekTitleLabel.setFont(
-                Font.font("Serif", FontWeight.BOLD, 18)
-        );
-
-        greekSelector = new ComboBox<>();
-        greekSelector.setPromptText(
-                "Choose a New Testament chapter"
-        );
-        greekSelector.setMaxWidth(Double.MAX_VALUE);
-        greekSelector.setOnAction(
-                event -> loadSelectedGreekChapter()
-        );
-
-        greekStatusLabel = new Label(
-                "Select a New Testament reading to open its Greek interlinear."
-        );
-        greekStatusLabel.setWrapText(true);
-
-        greekWebView = new WebView();
-        greekWebEngine = greekWebView.getEngine();
-        greekWebView.setMinHeight(150);
-
-        VBox greekContent = new VBox(
-                8,
-                greekTitleLabel,
-                greekSelector,
-                greekStatusLabel,
-                greekWebView
-        );
-        greekContent.setPadding(new Insets(10));
-        greekContent.setMinHeight(180);
-        VBox.setVgrow(greekWebView, Priority.ALWAYS);
+        originalLanguageContent.setPadding(new Insets(10));
+        originalLanguageContent.setMinHeight(180);
+        VBox.setVgrow(originalLanguageWebView, Priority.ALWAYS);
 
         bookIntroductionTab = new Tab("Book Introduction", bookIntroductionContent);
         bookIntroductionTab.setClosable(false);
@@ -941,24 +897,21 @@ public class BibleReader extends Application {
         chartsTab = new Tab("Charts", chartsContent);
         chartsTab.setClosable(false);
 
-        hebrewTab = new Tab("Hebrew", hebrewContent);
-        hebrewTab.setClosable(false);
-
-        greekTab = new Tab("Greek", greekContent);
-        greekTab.setClosable(false);
+        originalLanguageTab =
+                new Tab("Hebrew / Greek", originalLanguageContent);
+        originalLanguageTab.setClosable(false);
 
         /*
          * Book Introduction is shown only on the first chronological
          * reading day in which a Bible book appears.
          *
-         * Personality Profiles, Charts, Hebrew, and Greek remain
+         * Personality Profiles, Charts, and Hebrew / Greek remain
          * available day-by-day.
          */
         topInfoTabs = new TabPane(
                 personalityProfileTab,
                 chartsTab,
-                hebrewTab,
-                greekTab
+                originalLanguageTab
         );
         topInfoTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -2592,11 +2545,8 @@ public class BibleReader extends Application {
         clearBookIntroduction(
                 "Open a Bible reading to see the matching book introduction."
         );
-        clearHebrew(
-                "Select an Old Testament reading to open its Hebrew interlinear."
-        );
-        clearGreek(
-                "Select a New Testament reading to open its Greek interlinear."
+        clearOriginalLanguage(
+                "Select a Bible reading to open its Hebrew or Greek interlinear."
         );
 
         if (
@@ -2615,17 +2565,10 @@ public class BibleReader extends Application {
             }
 
             if (
-                    hebrewTab != null
-                            && !topInfoTabs.getTabs().contains(hebrewTab)
+                    originalLanguageTab != null
+                            && !topInfoTabs.getTabs().contains(originalLanguageTab)
             ) {
-                topInfoTabs.getTabs().add(hebrewTab);
-            }
-
-            if (
-                    greekTab != null
-                            && !topInfoTabs.getTabs().contains(greekTab)
-            ) {
-                topInfoTabs.getTabs().add(greekTab);
+                topInfoTabs.getTabs().add(originalLanguageTab);
             }
 
             topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -3780,117 +3723,54 @@ public class BibleReader extends Application {
     // Bible Hub Hebrew / Greek Interlinear
     // ================================================================
 
-    private void updateHebrewGreekForReference(
+    private void updateOriginalLanguageForReference(
             String referenceText
     ) {
+        if (
+                originalLanguageSelector == null
+                        || originalLanguageWebEngine == null
+        ) {
+            return;
+        }
+
         List<String> references =
                 extractStudyReferences(referenceText);
 
-        List<String> hebrewReferences = new ArrayList<>();
-        List<String> greekReferences = new ArrayList<>();
+        originalLanguageSelector.getItems().clear();
+        originalLanguageSelector.getItems().addAll(references);
 
-        for (String reference : references) {
-            int lastSpace = reference.lastIndexOf(' ');
-
-            if (lastSpace <= 0) {
-                continue;
-            }
-
-            String book =
-                    reference.substring(0, lastSpace).trim();
-
-            if (isNewTestamentBook(book)) {
-                greekReferences.add(reference);
-            } else {
-                hebrewReferences.add(reference);
-            }
+        if (references.isEmpty()) {
+            clearOriginalLanguage(
+                    "No matching Bible chapter was found for this reading."
+            );
+            return;
         }
 
-        if (hebrewSelector != null) {
-            hebrewSelector.getItems().clear();
-            hebrewSelector.getItems().addAll(hebrewReferences);
-
-            if (hebrewReferences.isEmpty()) {
-                clearHebrew(
-                        "No Old Testament chapter is included in this reading."
-                );
-            } else {
-                hebrewSelector.setValue(hebrewReferences.get(0));
-                loadSelectedHebrewChapter();
-            }
-        }
-
-        if (greekSelector != null) {
-            greekSelector.getItems().clear();
-            greekSelector.getItems().addAll(greekReferences);
-
-            if (greekReferences.isEmpty()) {
-                clearGreek(
-                        "No New Testament chapter is included in this reading."
-                );
-            } else {
-                greekSelector.setValue(greekReferences.get(0));
-                loadSelectedGreekChapter();
-            }
-        }
+        originalLanguageSelector.setValue(references.get(0));
+        loadSelectedOriginalLanguageChapter();
     }
 
-    private void loadSelectedHebrewChapter() {
+    private void loadSelectedOriginalLanguageChapter() {
         if (
-                hebrewSelector == null
-                        || hebrewWebEngine == null
+                originalLanguageSelector == null
+                        || originalLanguageWebEngine == null
         ) {
             return;
         }
 
-        String selection = hebrewSelector.getValue();
+        String selection =
+                originalLanguageSelector.getValue();
 
         if (selection == null || selection.isBlank()) {
             return;
         }
 
-        loadBibleHubChapter(
-                selection,
-                false,
-                hebrewTitleLabel,
-                hebrewStatusLabel,
-                hebrewWebEngine
-        );
-    }
-
-    private void loadSelectedGreekChapter() {
-        if (
-                greekSelector == null
-                        || greekWebEngine == null
-        ) {
-            return;
-        }
-
-        String selection = greekSelector.getValue();
-
-        if (selection == null || selection.isBlank()) {
-            return;
-        }
-
-        loadBibleHubChapter(
-                selection,
-                true,
-                greekTitleLabel,
-                greekStatusLabel,
-                greekWebEngine
-        );
-    }
-
-    private void loadBibleHubChapter(
-            String selection,
-            boolean greek,
-            Label titleLabel,
-            Label statusLabel,
-            WebEngine engine
-    ) {
         int lastSpace = selection.lastIndexOf(' ');
 
         if (lastSpace <= 0) {
+            clearOriginalLanguage(
+                    "Could not determine the selected Bible chapter."
+            );
             return;
         }
 
@@ -3905,13 +3785,17 @@ public class BibleReader extends Application {
                             selection.substring(lastSpace + 1).trim()
                     );
         } catch (NumberFormatException error) {
+            clearOriginalLanguage(
+                    "Could not determine the selected Bible chapter."
+            );
             return;
         }
 
-        String slug = bibleHubBookSlug(book);
+        String slug =
+                bibleHubBookSlug(book);
 
         if (slug == null) {
-            statusLabel.setText(
+            clearOriginalLanguage(
                     "Bible Hub chapter mapping is unavailable for "
                             + book
                             + "."
@@ -3926,62 +3810,38 @@ public class BibleReader extends Application {
                         + chapter
                         + ".htm";
 
-        titleLabel.setText(
-                (greek ? "Greek Interlinear — " : "Hebrew Interlinear — ")
-                        + book
-                        + " "
-                        + chapter
+        originalLanguageTitleLabel.setText(
+                isNewTestamentBook(book)
+                        ? "Greek Interlinear — " + book + " " + chapter
+                        : "Hebrew Interlinear — " + book + " " + chapter
         );
 
-        statusLabel.setText(
+        originalLanguageStatusLabel.setText(
                 "Loaded from Bible Hub. "
                         + "Use the Strong's links and word entries for concordance study."
         );
 
-        engine.load(url);
+        originalLanguageWebEngine.load(url);
     }
 
-    private void clearHebrew(String message) {
-        if (hebrewSelector != null) {
-            hebrewSelector.getItems().clear();
-            hebrewSelector.setValue(null);
+    private void clearOriginalLanguage(String message) {
+        if (originalLanguageSelector != null) {
+            originalLanguageSelector.getItems().clear();
+            originalLanguageSelector.setValue(null);
         }
 
-        if (hebrewTitleLabel != null) {
-            hebrewTitleLabel.setText("Hebrew Concordance");
-        }
-
-        if (hebrewStatusLabel != null) {
-            hebrewStatusLabel.setText(message);
-        }
-
-        if (hebrewWebEngine != null) {
-            hebrewWebEngine.loadContent(
-                    "<html><body style='font-family:Georgia,serif;"
-                            + "padding:16px;color:#222;background:#fff;'>"
-                            + escapeHtml(message)
-                            + "</body></html>",
-                    "text/html"
+        if (originalLanguageTitleLabel != null) {
+            originalLanguageTitleLabel.setText(
+                    "Hebrew / Greek Concordance"
             );
         }
-    }
 
-    private void clearGreek(String message) {
-        if (greekSelector != null) {
-            greekSelector.getItems().clear();
-            greekSelector.setValue(null);
+        if (originalLanguageStatusLabel != null) {
+            originalLanguageStatusLabel.setText(message);
         }
 
-        if (greekTitleLabel != null) {
-            greekTitleLabel.setText("Greek Concordance");
-        }
-
-        if (greekStatusLabel != null) {
-            greekStatusLabel.setText(message);
-        }
-
-        if (greekWebEngine != null) {
-            greekWebEngine.loadContent(
+        if (originalLanguageWebEngine != null) {
+            originalLanguageWebEngine.loadContent(
                     "<html><body style='font-family:Georgia,serif;"
                             + "padding:16px;color:#222;background:#fff;'>"
                             + escapeHtml(message)
@@ -4190,8 +4050,7 @@ public class BibleReader extends Application {
                         || bookIntroductionTab == null
                         || personalityProfileTab == null
                         || chartsTab == null
-                        || hebrewTab == null
-                        || greekTab == null
+                        || originalLanguageTab == null
         ) {
             return;
         }
@@ -4217,12 +4076,8 @@ public class BibleReader extends Application {
             topInfoTabs.getTabs().add(chartsTab);
         }
 
-        if (!topInfoTabs.getTabs().contains(hebrewTab)) {
-            topInfoTabs.getTabs().add(hebrewTab);
-        }
-
-        if (!topInfoTabs.getTabs().contains(greekTab)) {
-            topInfoTabs.getTabs().add(greekTab);
+        if (!topInfoTabs.getTabs().contains(originalLanguageTab)) {
+            topInfoTabs.getTabs().add(originalLanguageTab);
         }
 
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -5691,7 +5546,7 @@ public class BibleReader extends Application {
         updatePersonalityProfilesForReference(referenceText);
         updateChartsForReference(referenceText);
         updateBookIntroductionsForReference(referenceText);
-        updateHebrewGreekForReference(referenceText);
+        updateOriginalLanguageForReference(referenceText);
         updateTimelineForReference(referenceText);
 
         if (studyReferenceSelector == null) return;
