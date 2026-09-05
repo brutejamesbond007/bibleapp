@@ -5581,8 +5581,32 @@ public class BibleReader extends Application {
             names.append(Pattern.quote(name));
         }
 
+        /*
+         * Match all of these forms:
+         *
+         *   Ezekiel 44
+         *   Ezekiel 44-46
+         *   Ezekiel 44:1-46:24
+         *   John 3:16
+         *   John 3:16-21
+         *
+         * The important distinction is:
+         *
+         *   Ezekiel 44:1-46:24  -> chapters 44, 45, 46
+         *   Ezekiel 44:1-24     -> chapter 44 only
+         *
+         * A range ending with another chapter:verse pair means the
+         * reading crosses chapters. A plain number after a verse is
+         * treated as the ending VERSE, not another chapter.
+         */
         Pattern pattern = Pattern.compile(
-                "(?i)(" + names + ")\\s+(\\d{1,3})(?:\\s*-\\s*(\\d{1,3}))?"
+                "(?i)(" + names + ")\\s+"
+                        + "(\\d{1,3})"              // 2 = start chapter
+                        + "(?::(\\d{1,3}))?"        // 3 = start verse
+                        + "(?:\\s*-\\s*"
+                        + "(?:(\\d{1,3}):(\\d{1,3})" // 4/5 = end chapter/verse
+                        + "|(\\d{1,3}))"            // 6 = plain end number
+                        + ")?"
         );
 
         Matcher matcher = pattern.matcher(referenceText);
@@ -5594,14 +5618,41 @@ public class BibleReader extends Application {
             int startChapter = Integer.parseInt(matcher.group(2));
             int endChapter = startChapter;
 
-            if (matcher.group(3) != null) {
-                int candidate = Integer.parseInt(matcher.group(3));
-                if (candidate >= startChapter && candidate - startChapter <= 20) {
+            String startVerseText = matcher.group(3);
+            String endChapterText = matcher.group(4);
+            String plainEndText = matcher.group(6);
+
+            if (endChapterText != null) {
+                // Example: Ezekiel 44:1-46:24
+                int candidate = Integer.parseInt(endChapterText);
+
+                if (
+                        candidate >= startChapter
+                                && candidate - startChapter <= 50
+                ) {
+                    endChapter = candidate;
+                }
+
+            } else if (
+                    startVerseText == null
+                            && plainEndText != null
+            ) {
+                // Example: Genesis 1-3
+                int candidate = Integer.parseInt(plainEndText);
+
+                if (
+                        candidate >= startChapter
+                                && candidate - startChapter <= 50
+                ) {
                     endChapter = candidate;
                 }
             }
 
-            for (int chapter = startChapter; chapter <= endChapter; chapter++) {
+            for (
+                    int chapter = startChapter;
+                    chapter <= endChapter;
+                    chapter++
+            ) {
                 found.add(book + " " + chapter);
             }
         }
