@@ -613,6 +613,7 @@ public class BibleReader extends Application {
     private void createPrimaryBible() {
         webView = new WebView();
         webEngine = webView.getEngine();
+        configureBibleGatewayResourcesAutoCollapse(webEngine);
         webView.setMinWidth(300);
         webView.setMinHeight(200);
     }
@@ -620,6 +621,7 @@ public class BibleReader extends Application {
     private void createComparisonBible() {
         comparisonWebView = new WebView();
         comparisonWebEngine = comparisonWebView.getEngine();
+        configureBibleGatewayResourcesAutoCollapse(comparisonWebEngine);
         comparisonWebView.setMinWidth(250);
 
         Label comparisonLabel = new Label("Compare With:");
@@ -2785,6 +2787,126 @@ public class BibleReader extends Application {
 
         if (autoHideHeaderEnabled) scheduleHeaderHide();
         if (autoHideSidesEnabled) scheduleSidesHide();
+    }
+
+    /*
+     * Bible Gateway opens its Resources / Hebrew-Greek / Your Content
+     * drawer on the passage page.  Because this application already has
+     * its own study panels, automatically press Bible Gateway's own
+     * collapse control after the page finishes loading.
+     *
+     * The script deliberately looks for the visible Bible Gateway
+     * resources area instead of depending on one fixed CSS class.  That
+     * makes it a little more tolerant of Bible Gateway changing class
+     * names while keeping the same page layout.
+     */
+    private void configureBibleGatewayResourcesAutoCollapse(
+            WebEngine engine
+    ) {
+        if (engine == null) return;
+
+        engine.getLoadWorker()
+                .stateProperty()
+                .addListener(
+                        (observable, oldState, newState) -> {
+                            if (
+                                    newState
+                                            == javafx.concurrent.Worker.State.SUCCEEDED
+                            ) {
+                                scheduleBibleGatewayResourcesCollapse(
+                                        engine
+                                );
+                            }
+                        }
+                );
+    }
+
+    private void scheduleBibleGatewayResourcesCollapse(
+            WebEngine engine
+    ) {
+        if (engine == null) return;
+
+        String script =
+                "(function(){"
+                        + "function collapseBGResources(){"
+                        + "try{"
+                        + "if(!location.hostname"
+                        + ".toLowerCase()"
+                        + ".includes('biblegateway.com'))return;"
+
+                        // The expanded drawer contains these three tabs.
+                        + "var all=document.querySelectorAll('body *');"
+                        + "var marker=null;"
+                        + "for(var i=0;i<all.length;i++){"
+                        + "var t=(all[i].innerText||'')"
+                        + ".replace(/\\\\s+/g,' ').trim();"
+                        + "if(t.includes('Resources')"
+                        + "&&t.includes('Hebrew/Greek')"
+                        + "&&t.includes('Your Content')){"
+                        + "var r=all[i].getBoundingClientRect();"
+                        + "if(r.width>220&&r.height>30){"
+                        + "marker=all[i];break;"
+                        + "}"
+                        + "}"
+                        + "}"
+                        + "if(!marker)return;"
+
+                        // Walk upward looking for Bible Gateway's small
+                        // collapse button at the top-right of this area.
+                        + "var node=marker;"
+                        + "for(var level=0;"
+                        + "node&&level<7;"
+                        + "level++,node=node.parentElement){"
+                        + "var buttons=node"
+                        + ".querySelectorAll('button,[role=button]');"
+                        + "var nr=node.getBoundingClientRect();"
+                        + "for(var j=0;j<buttons.length;j++){"
+                        + "var b=buttons[j];"
+                        + "var br=b.getBoundingClientRect();"
+                        + "var label=("
+                        + "(b.getAttribute('aria-label')||'')+' '+"
+                        + "(b.getAttribute('title')||'')+' '+"
+                        + "(b.innerText||'')"
+                        + ").toLowerCase();"
+
+                        // Prefer an explicitly labelled collapse/hide
+                        // control if Bible Gateway provides one.
+                        + "if(/collapse|close|hide|sidebar|drawer|panel/"
+                        + ".test(label)){"
+                        + "b.click();return;"
+                        + "}"
+
+                        // Fallback for the arrow-only button shown by
+                        // Bible Gateway: small control near the upper
+                        // right edge of the resources container.
+                        + "var small=br.width>15&&br.width<80"
+                        + "&&br.height>15&&br.height<80;"
+                        + "var right=br.right>nr.right-90;"
+                        + "var top=br.top<nr.top+100;"
+                        + "if(small&&right&&top){"
+                        + "b.click();return;"
+                        + "}"
+                        + "}"
+                        + "}"
+                        + "}catch(e){}"
+                        + "}"
+
+                        // Bible Gateway renders parts of the page after
+                        // the initial load event, so make a few attempts.
+                        + "setTimeout(collapseBGResources,250);"
+                        + "setTimeout(collapseBGResources,900);"
+                        + "setTimeout(collapseBGResources,1800);"
+                        + "setTimeout(collapseBGResources,3200);"
+                        + "})();";
+
+        try {
+            engine.executeScript(script);
+        } catch (Exception ignored) {
+            /*
+             * The passage itself should still remain usable even if
+             * Bible Gateway changes the drawer markup in the future.
+             */
+        }
     }
 
     private void loadBibleGatewayPage(
