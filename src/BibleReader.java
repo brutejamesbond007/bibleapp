@@ -180,6 +180,21 @@ public class BibleReader extends Application {
     private WebEngine chartsWebEngine;
     private final Map<String, String> chartEntries = new LinkedHashMap<>();
 
+    private Tab hebrewTab;
+    private Tab greekTab;
+
+    private Label hebrewTitleLabel;
+    private Label hebrewStatusLabel;
+    private ComboBox<String> hebrewSelector;
+    private WebView hebrewWebView;
+    private WebEngine hebrewWebEngine;
+
+    private Label greekTitleLabel;
+    private Label greekStatusLabel;
+    private ComboBox<String> greekSelector;
+    private WebView greekWebView;
+    private WebEngine greekWebEngine;
+
     private ComboBox<String> studyReferenceSelector;
     private Label studyNotesTitleLabel;
     private Label studyNotesStatusLabel;
@@ -843,6 +858,80 @@ public class BibleReader extends Application {
         chartsContent.setMinHeight(180);
         VBox.setVgrow(chartsWebView, Priority.ALWAYS);
 
+        // ------------------------------------------------------------
+        // Bible Hub Hebrew Interlinear
+        // ------------------------------------------------------------
+        hebrewTitleLabel = new Label("Hebrew Concordance");
+        hebrewTitleLabel.setFont(
+                Font.font("Serif", FontWeight.BOLD, 18)
+        );
+
+        hebrewSelector = new ComboBox<>();
+        hebrewSelector.setPromptText(
+                "Choose an Old Testament chapter"
+        );
+        hebrewSelector.setMaxWidth(Double.MAX_VALUE);
+        hebrewSelector.setOnAction(
+                event -> loadSelectedHebrewChapter()
+        );
+
+        hebrewStatusLabel = new Label(
+                "Select an Old Testament reading to open its Hebrew interlinear."
+        );
+        hebrewStatusLabel.setWrapText(true);
+
+        hebrewWebView = new WebView();
+        hebrewWebEngine = hebrewWebView.getEngine();
+        hebrewWebView.setMinHeight(150);
+
+        VBox hebrewContent = new VBox(
+                8,
+                hebrewTitleLabel,
+                hebrewSelector,
+                hebrewStatusLabel,
+                hebrewWebView
+        );
+        hebrewContent.setPadding(new Insets(10));
+        hebrewContent.setMinHeight(180);
+        VBox.setVgrow(hebrewWebView, Priority.ALWAYS);
+
+        // ------------------------------------------------------------
+        // Bible Hub Greek Interlinear
+        // ------------------------------------------------------------
+        greekTitleLabel = new Label("Greek Concordance");
+        greekTitleLabel.setFont(
+                Font.font("Serif", FontWeight.BOLD, 18)
+        );
+
+        greekSelector = new ComboBox<>();
+        greekSelector.setPromptText(
+                "Choose a New Testament chapter"
+        );
+        greekSelector.setMaxWidth(Double.MAX_VALUE);
+        greekSelector.setOnAction(
+                event -> loadSelectedGreekChapter()
+        );
+
+        greekStatusLabel = new Label(
+                "Select a New Testament reading to open its Greek interlinear."
+        );
+        greekStatusLabel.setWrapText(true);
+
+        greekWebView = new WebView();
+        greekWebEngine = greekWebView.getEngine();
+        greekWebView.setMinHeight(150);
+
+        VBox greekContent = new VBox(
+                8,
+                greekTitleLabel,
+                greekSelector,
+                greekStatusLabel,
+                greekWebView
+        );
+        greekContent.setPadding(new Insets(10));
+        greekContent.setMinHeight(180);
+        VBox.setVgrow(greekWebView, Priority.ALWAYS);
+
         bookIntroductionTab = new Tab("Book Introduction", bookIntroductionContent);
         bookIntroductionTab.setClosable(false);
 
@@ -852,13 +941,25 @@ public class BibleReader extends Application {
         chartsTab = new Tab("Charts", chartsContent);
         chartsTab.setClosable(false);
 
+        hebrewTab = new Tab("Hebrew", hebrewContent);
+        hebrewTab.setClosable(false);
+
+        greekTab = new Tab("Greek", greekContent);
+        greekTab.setClosable(false);
+
         /*
          * Book Introduction is shown only on the first chronological
          * reading day in which a Bible book appears.
          *
-         * Personality Profiles and Charts remain available day-by-day.
+         * Personality Profiles, Charts, Hebrew, and Greek remain
+         * available day-by-day.
          */
-        topInfoTabs = new TabPane(personalityProfileTab, chartsTab);
+        topInfoTabs = new TabPane(
+                personalityProfileTab,
+                chartsTab,
+                hebrewTab,
+                greekTab
+        );
         topInfoTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
 
@@ -2491,6 +2592,12 @@ public class BibleReader extends Application {
         clearBookIntroduction(
                 "Open a Bible reading to see the matching book introduction."
         );
+        clearHebrew(
+                "Select an Old Testament reading to open its Hebrew interlinear."
+        );
+        clearGreek(
+                "Select a New Testament reading to open its Greek interlinear."
+        );
 
         if (
                 topInfoTabs != null
@@ -2505,6 +2612,20 @@ public class BibleReader extends Application {
 
             if (chartsTab != null && !topInfoTabs.getTabs().contains(chartsTab)) {
                 topInfoTabs.getTabs().add(chartsTab);
+            }
+
+            if (
+                    hebrewTab != null
+                            && !topInfoTabs.getTabs().contains(hebrewTab)
+            ) {
+                topInfoTabs.getTabs().add(hebrewTab);
+            }
+
+            if (
+                    greekTab != null
+                            && !topInfoTabs.getTabs().contains(greekTab)
+            ) {
+                topInfoTabs.getTabs().add(greekTab);
             }
 
             topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -3656,6 +3777,335 @@ public class BibleReader extends Application {
     }
 
     // ================================================================
+    // Bible Hub Hebrew / Greek Interlinear
+    // ================================================================
+
+    private void updateHebrewGreekForReference(
+            String referenceText
+    ) {
+        List<String> references =
+                extractStudyReferences(referenceText);
+
+        List<String> hebrewReferences = new ArrayList<>();
+        List<String> greekReferences = new ArrayList<>();
+
+        for (String reference : references) {
+            int lastSpace = reference.lastIndexOf(' ');
+
+            if (lastSpace <= 0) {
+                continue;
+            }
+
+            String book =
+                    reference.substring(0, lastSpace).trim();
+
+            if (isNewTestamentBook(book)) {
+                greekReferences.add(reference);
+            } else {
+                hebrewReferences.add(reference);
+            }
+        }
+
+        if (hebrewSelector != null) {
+            hebrewSelector.getItems().clear();
+            hebrewSelector.getItems().addAll(hebrewReferences);
+
+            if (hebrewReferences.isEmpty()) {
+                clearHebrew(
+                        "No Old Testament chapter is included in this reading."
+                );
+            } else {
+                hebrewSelector.setValue(hebrewReferences.get(0));
+                loadSelectedHebrewChapter();
+            }
+        }
+
+        if (greekSelector != null) {
+            greekSelector.getItems().clear();
+            greekSelector.getItems().addAll(greekReferences);
+
+            if (greekReferences.isEmpty()) {
+                clearGreek(
+                        "No New Testament chapter is included in this reading."
+                );
+            } else {
+                greekSelector.setValue(greekReferences.get(0));
+                loadSelectedGreekChapter();
+            }
+        }
+    }
+
+    private void loadSelectedHebrewChapter() {
+        if (
+                hebrewSelector == null
+                        || hebrewWebEngine == null
+        ) {
+            return;
+        }
+
+        String selection = hebrewSelector.getValue();
+
+        if (selection == null || selection.isBlank()) {
+            return;
+        }
+
+        loadBibleHubChapter(
+                selection,
+                false,
+                hebrewTitleLabel,
+                hebrewStatusLabel,
+                hebrewWebEngine
+        );
+    }
+
+    private void loadSelectedGreekChapter() {
+        if (
+                greekSelector == null
+                        || greekWebEngine == null
+        ) {
+            return;
+        }
+
+        String selection = greekSelector.getValue();
+
+        if (selection == null || selection.isBlank()) {
+            return;
+        }
+
+        loadBibleHubChapter(
+                selection,
+                true,
+                greekTitleLabel,
+                greekStatusLabel,
+                greekWebEngine
+        );
+    }
+
+    private void loadBibleHubChapter(
+            String selection,
+            boolean greek,
+            Label titleLabel,
+            Label statusLabel,
+            WebEngine engine
+    ) {
+        int lastSpace = selection.lastIndexOf(' ');
+
+        if (lastSpace <= 0) {
+            return;
+        }
+
+        String book =
+                selection.substring(0, lastSpace).trim();
+
+        int chapter;
+
+        try {
+            chapter =
+                    Integer.parseInt(
+                            selection.substring(lastSpace + 1).trim()
+                    );
+        } catch (NumberFormatException error) {
+            return;
+        }
+
+        String slug = bibleHubBookSlug(book);
+
+        if (slug == null) {
+            statusLabel.setText(
+                    "Bible Hub chapter mapping is unavailable for "
+                            + book
+                            + "."
+            );
+            return;
+        }
+
+        String url =
+                "https://biblehub.com/interlinear/"
+                        + slug
+                        + "/"
+                        + chapter
+                        + ".htm";
+
+        titleLabel.setText(
+                (greek ? "Greek Interlinear — " : "Hebrew Interlinear — ")
+                        + book
+                        + " "
+                        + chapter
+        );
+
+        statusLabel.setText(
+                "Loaded from Bible Hub. "
+                        + "Use the Strong's links and word entries for concordance study."
+        );
+
+        engine.load(url);
+    }
+
+    private void clearHebrew(String message) {
+        if (hebrewSelector != null) {
+            hebrewSelector.getItems().clear();
+            hebrewSelector.setValue(null);
+        }
+
+        if (hebrewTitleLabel != null) {
+            hebrewTitleLabel.setText("Hebrew Concordance");
+        }
+
+        if (hebrewStatusLabel != null) {
+            hebrewStatusLabel.setText(message);
+        }
+
+        if (hebrewWebEngine != null) {
+            hebrewWebEngine.loadContent(
+                    "<html><body style='font-family:Georgia,serif;"
+                            + "padding:16px;color:#222;background:#fff;'>"
+                            + escapeHtml(message)
+                            + "</body></html>",
+                    "text/html"
+            );
+        }
+    }
+
+    private void clearGreek(String message) {
+        if (greekSelector != null) {
+            greekSelector.getItems().clear();
+            greekSelector.setValue(null);
+        }
+
+        if (greekTitleLabel != null) {
+            greekTitleLabel.setText("Greek Concordance");
+        }
+
+        if (greekStatusLabel != null) {
+            greekStatusLabel.setText(message);
+        }
+
+        if (greekWebEngine != null) {
+            greekWebEngine.loadContent(
+                    "<html><body style='font-family:Georgia,serif;"
+                            + "padding:16px;color:#222;background:#fff;'>"
+                            + escapeHtml(message)
+                            + "</body></html>",
+                    "text/html"
+            );
+        }
+    }
+
+    private String bibleHubBookSlug(String book) {
+        if (book == null) return null;
+
+        switch (book) {
+            case "Genesis": return "genesis";
+            case "Exodus": return "exodus";
+            case "Leviticus": return "leviticus";
+            case "Numbers": return "numbers";
+            case "Deuteronomy": return "deuteronomy";
+            case "Joshua": return "joshua";
+            case "Judges": return "judges";
+            case "Ruth": return "ruth";
+            case "1 Samuel": return "1_samuel";
+            case "2 Samuel": return "2_samuel";
+            case "1 Kings": return "1_kings";
+            case "2 Kings": return "2_kings";
+            case "1 Chronicles": return "1_chronicles";
+            case "2 Chronicles": return "2_chronicles";
+            case "Ezra": return "ezra";
+            case "Nehemiah": return "nehemiah";
+            case "Esther": return "esther";
+            case "Job": return "job";
+            case "Psalm":
+            case "Psalms": return "psalms";
+            case "Proverb":
+            case "Proverbs": return "proverbs";
+            case "Ecclesiastes": return "ecclesiastes";
+            case "Song of Solomon":
+            case "Song of Songs": return "songs";
+            case "Isaiah": return "isaiah";
+            case "Jeremiah": return "jeremiah";
+            case "Lamentations": return "lamentations";
+            case "Ezekiel": return "ezekiel";
+            case "Daniel": return "daniel";
+            case "Hosea": return "hosea";
+            case "Joel": return "joel";
+            case "Amos": return "amos";
+            case "Obadiah": return "obadiah";
+            case "Jonah": return "jonah";
+            case "Micah": return "micah";
+            case "Nahum": return "nahum";
+            case "Habakkuk": return "habakkuk";
+            case "Zephaniah": return "zephaniah";
+            case "Haggai": return "haggai";
+            case "Zechariah": return "zechariah";
+            case "Malachi": return "malachi";
+            case "Matthew": return "matthew";
+            case "Mark": return "mark";
+            case "Luke": return "luke";
+            case "John": return "john";
+            case "Acts": return "acts";
+            case "Romans": return "romans";
+            case "1 Corinthians": return "1_corinthians";
+            case "2 Corinthians": return "2_corinthians";
+            case "Galatians": return "galatians";
+            case "Ephesians": return "ephesians";
+            case "Philippians": return "philippians";
+            case "Colossians": return "colossians";
+            case "1 Thessalonians": return "1_thessalonians";
+            case "2 Thessalonians": return "2_thessalonians";
+            case "1 Timothy": return "1_timothy";
+            case "2 Timothy": return "2_timothy";
+            case "Titus": return "titus";
+            case "Philemon": return "philemon";
+            case "Hebrews": return "hebrews";
+            case "James": return "james";
+            case "1 Peter": return "1_peter";
+            case "2 Peter": return "2_peter";
+            case "1 John": return "1_john";
+            case "2 John": return "2_john";
+            case "3 John": return "3_john";
+            case "Jude": return "jude";
+            case "Revelation": return "revelation";
+            default: return null;
+        }
+    }
+
+    private boolean isNewTestamentBook(String book) {
+        if (book == null) return false;
+
+        switch (book) {
+            case "Matthew":
+            case "Mark":
+            case "Luke":
+            case "John":
+            case "Acts":
+            case "Romans":
+            case "1 Corinthians":
+            case "2 Corinthians":
+            case "Galatians":
+            case "Ephesians":
+            case "Philippians":
+            case "Colossians":
+            case "1 Thessalonians":
+            case "2 Thessalonians":
+            case "1 Timothy":
+            case "2 Timothy":
+            case "Titus":
+            case "Philemon":
+            case "Hebrews":
+            case "James":
+            case "1 Peter":
+            case "2 Peter":
+            case "1 John":
+            case "2 John":
+            case "3 John":
+            case "Jude":
+            case "Revelation":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // ================================================================
     // Life Application Book Introductions (local EPUB)
     // ================================================================
 
@@ -3740,6 +4190,8 @@ public class BibleReader extends Application {
                         || bookIntroductionTab == null
                         || personalityProfileTab == null
                         || chartsTab == null
+                        || hebrewTab == null
+                        || greekTab == null
         ) {
             return;
         }
@@ -3763,6 +4215,14 @@ public class BibleReader extends Application {
 
         if (!topInfoTabs.getTabs().contains(chartsTab)) {
             topInfoTabs.getTabs().add(chartsTab);
+        }
+
+        if (!topInfoTabs.getTabs().contains(hebrewTab)) {
+            topInfoTabs.getTabs().add(hebrewTab);
+        }
+
+        if (!topInfoTabs.getTabs().contains(greekTab)) {
+            topInfoTabs.getTabs().add(greekTab);
         }
 
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -5231,6 +5691,7 @@ public class BibleReader extends Application {
         updatePersonalityProfilesForReference(referenceText);
         updateChartsForReference(referenceText);
         updateBookIntroductionsForReference(referenceText);
+        updateHebrewGreekForReference(referenceText);
         updateTimelineForReference(referenceText);
 
         if (studyReferenceSelector == null) return;
