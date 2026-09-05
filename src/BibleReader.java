@@ -83,6 +83,25 @@ public class BibleReader extends Application {
     private static final String STUDY_BIBLE_FILENAME =
             "dokumen.pub_nlt-life-application-study-bible-third-edition-9781496441652-9781496433824.epub";
 
+    private static final String READING_PLAN_1_ID = "reading_plan_1";
+    private static final String READING_PLAN_2_ID = "reading_plan_2";
+    private static final String READING_PLAN_3_ID = "reading_plan_3";
+
+    private static final String READING_PLAN_1_NAME =
+            "Reading Plan 1 - One Year Bible";
+    private static final String READING_PLAN_2_NAME =
+            "Reading Plan 2 - Chronological Version 1";
+    private static final String READING_PLAN_3_NAME =
+            "Reading Plan 3 - Current Chronological";
+
+    private final Map<String, Map<Integer, String>> readingPlanOneMonths =
+            new LinkedHashMap<>();
+    private final Map<String, Map<Integer, String>> readingPlanTwoMonths =
+            new LinkedHashMap<>();
+
+    private ComboBox<String> readingPlanSelector;
+    private String currentReadingPlanId = READING_PLAN_3_ID;
+
     private static final String SQLITE_DATABASE_URL =
             "jdbc:sqlite:data/bible-reader.db";
 
@@ -255,6 +274,8 @@ public class BibleReader extends Application {
     @Override
     public void start(Stage stage) {
         loadDatabaseConfig();
+        loadReadingPlanOneData();
+        loadReadingPlanTwoData();
         loadFullReadingPlan();
         createTranslations();
         createStudyBookCodes();
@@ -885,7 +906,22 @@ public class BibleReader extends Application {
         Label readingPlanLabel = new Label("Reading Plan");
         readingPlanLabel.setFont(Font.font("Serif", FontWeight.BOLD, 20));
 
-        VBox readingPlanPanel = new VBox(8, readingPlanLabel, readingPlanTree);
+        readingPlanSelector = new ComboBox<>();
+        readingPlanSelector.getItems().addAll(
+                READING_PLAN_1_NAME,
+                READING_PLAN_2_NAME,
+                READING_PLAN_3_NAME
+        );
+        readingPlanSelector.setValue(READING_PLAN_3_NAME);
+        readingPlanSelector.setMaxWidth(Double.MAX_VALUE);
+        readingPlanSelector.setOnAction(event -> switchReadingPlan());
+
+        VBox readingPlanPanel = new VBox(
+                8,
+                readingPlanLabel,
+                readingPlanSelector,
+                readingPlanTree
+        );
         readingPlanPanel.setPadding(new Insets(8));
         readingPlanPanel.setMinHeight(150);
         VBox.setVgrow(readingPlanTree, Priority.ALWAYS);
@@ -916,6 +952,42 @@ public class BibleReader extends Application {
         readingPlanSplitPane.setDividerPositions(READING_PLAN_WIDTH);
 
         root.setCenter(readingPlanSplitPane);
+    }
+
+    private void switchReadingPlan() {
+        if (readingPlanSelector == null) return;
+
+        String selection = readingPlanSelector.getValue();
+
+        if (READING_PLAN_1_NAME.equals(selection)) {
+            currentReadingPlanId = READING_PLAN_1_ID;
+        } else if (READING_PLAN_2_NAME.equals(selection)) {
+            currentReadingPlanId = READING_PLAN_2_ID;
+        } else {
+            currentReadingPlanId = READING_PLAN_3_ID;
+        }
+
+        currentDayIndex = -1;
+        currentStudyReference = null;
+
+        loadFullReadingPlan();
+
+        if (readingPlanTree != null) {
+            readingPlanTree.setRoot(createReadingPlanRoot());
+        }
+
+        refreshReadingPlanCompletionMarks();
+        showReadingPlanHome();
+    }
+
+    private String getCurrentReadingPlanName() {
+        if (READING_PLAN_1_ID.equals(currentReadingPlanId)) {
+            return READING_PLAN_1_NAME;
+        }
+        if (READING_PLAN_2_ID.equals(currentReadingPlanId)) {
+            return READING_PLAN_2_NAME;
+        }
+        return READING_PLAN_3_NAME;
     }
 
     private TreeView<String> createBibleBooksTree() {
@@ -1027,25 +1099,7 @@ public class BibleReader extends Application {
     }
 
     private TreeView<String> createReadingPlanTree() {
-        treeReadingMap.clear();
-
-        TreeItem<String> rootItem = new TreeItem<>("Chronological Reading Plan");
-        rootItem.setExpanded(true);
-
-        addMonthToTree(rootItem, "January", January.getReadings());
-        addMonthToTree(rootItem, "February", February.getReadings());
-        addMonthToTree(rootItem, "March", March.getReadings());
-        addMonthToTree(rootItem, "April", April.getReadings());
-        addMonthToTree(rootItem, "May", May.getReadings());
-        addMonthToTree(rootItem, "June", June.getReadings());
-        addMonthToTree(rootItem, "July", July.getReadings());
-        addMonthToTree(rootItem, "August", August.getReadings());
-        addMonthToTree(rootItem, "September", September.getReadings());
-        addMonthToTree(rootItem, "October", October.getReadings());
-        addMonthToTree(rootItem, "November", November.getReadings());
-        addMonthToTree(rootItem, "December", December.getReadings());
-
-        TreeView<String> tree = new TreeView<>(rootItem);
+        TreeView<String> tree = new TreeView<>(createReadingPlanRoot());
         tree.setShowRoot(true);
         tree.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> {
@@ -1061,26 +1115,52 @@ public class BibleReader extends Application {
         return tree;
     }
 
-    private void addMonthToTree(
-            TreeItem<String> rootItem,
-            String month,
-            Map<Integer, String> readings
-    ) {
-        TreeItem<String> monthItem = new TreeItem<>(month);
+    private TreeItem<String> createReadingPlanRoot() {
+        treeReadingMap.clear();
 
-        for (Map.Entry<Integer, String> entry : readings.entrySet()) {
-            int day = entry.getKey();
-            TreeItem<String> dayItem = new TreeItem<>(month + " " + day);
-            ReadingDay readingDay = findReadingDay(month, day);
-            if (readingDay != null) treeReadingMap.put(dayItem, readingDay);
-            monthItem.getChildren().add(dayItem);
+        TreeItem<String> rootItem =
+                new TreeItem<>(getCurrentReadingPlanName());
+        rootItem.setExpanded(true);
+
+        for (String month : new String[]{
+                "January", "February", "March", "April",
+                "May", "June", "July", "August",
+                "September", "October", "November", "December"
+        }) {
+            TreeItem<String> monthItem = new TreeItem<>(month);
+
+            for (ReadingDay readingDay : readingDays) {
+                if (!readingDay.getMonth().equals(month)) continue;
+
+                TreeItem<String> dayItem =
+                        new TreeItem<>(
+                                month + " " + readingDay.getDay()
+                        );
+
+                treeReadingMap.put(dayItem, readingDay);
+                monthItem.getChildren().add(dayItem);
+            }
+
+            rootItem.getChildren().add(monthItem);
         }
 
-        rootItem.getChildren().add(monthItem);
+        return rootItem;
     }
 
     private void loadFullReadingPlan() {
         readingDays.clear();
+
+        if (READING_PLAN_1_ID.equals(currentReadingPlanId)) {
+            addPlanMonths(readingPlanOneMonths);
+            return;
+        }
+
+        if (READING_PLAN_2_ID.equals(currentReadingPlanId)) {
+            addPlanMonths(readingPlanTwoMonths);
+            return;
+        }
+
+        // Reading Plan 3 is the existing modified chronological plan.
         addMonth("January", January.getReadings());
         addMonth("February", February.getReadings());
         addMonth("March", March.getReadings());
@@ -1095,10 +1175,802 @@ public class BibleReader extends Application {
         addMonth("December", December.getReadings());
     }
 
+    private void addPlanMonths(
+            Map<String, Map<Integer, String>> plan
+    ) {
+        for (String month : new String[]{
+                "January", "February", "March", "April",
+                "May", "June", "July", "August",
+                "September", "October", "November", "December"
+        }) {
+            Map<Integer, String> monthReadings = plan.get(month);
+            if (monthReadings != null) {
+                addMonth(month, monthReadings);
+            }
+        }
+    }
+
     private void addMonth(String month, Map<Integer, String> readings) {
         for (Map.Entry<Integer, String> entry : readings.entrySet()) {
-            readingDays.add(new ReadingDay(month, entry.getKey(), entry.getValue()));
+            readingDays.add(
+                    new ReadingDay(
+                            month,
+                            entry.getKey(),
+                            entry.getValue()
+                    )
+            );
         }
+    }
+
+
+    private void loadReadingPlanOneData() {
+        // Loaded from the user-supplied reading-plan PDF.
+        Map<String, Map<Integer, String>> target =
+                readingPlanOneMonths;
+
+        target.put("January", new LinkedHashMap<>());
+        target.put("February", new LinkedHashMap<>());
+        target.put("March", new LinkedHashMap<>());
+        target.put("April", new LinkedHashMap<>());
+        target.put("May", new LinkedHashMap<>());
+        target.put("June", new LinkedHashMap<>());
+        target.put("July", new LinkedHashMap<>());
+        target.put("August", new LinkedHashMap<>());
+        target.put("September", new LinkedHashMap<>());
+        target.put("October", new LinkedHashMap<>());
+        target.put("November", new LinkedHashMap<>());
+        target.put("December", new LinkedHashMap<>());
+
+        target.get("January").put(1, "Genesis 1:1-2:25; Matthew 1:1-2:12; Psalm 1:1-6; Proverbs 1:1-6");
+        target.get("January").put(2, "Genesis 3:1-4:26; Matthew 2:13-3:6; Psalm 2:1-12; Proverbs 1:7-9");
+        target.get("January").put(3, "Genesis 5:1-7:24; Matthew 3:7-4:11; Psalm 3:1-8; Proverbs 1:10-19");
+        target.get("January").put(4, "Genesis 8:1-10:32; Matthew 4:12-25; Psalm 4:1-8; Proverbs 1:20-23");
+        target.get("January").put(5, "Genesis 11:1-13:4; Matthew 5:1-26; Psalm 5:1-12; Proverbs 1:24-28");
+        target.get("January").put(6, "Genesis 13:5-15:21; Matthew 5:27-48; Psalm 6:1-10; Proverbs 1:29-33");
+        target.get("January").put(7, "Genesis 16:1-18:15; Matthew 6:1-24; Psalm 7:1-17; Proverbs 2:1-5");
+        target.get("January").put(8, "Genesis 18:16-19:38; Matthew 6:25-7:14; Psalm 8:1-9; Proverbs 2:6-15");
+        target.get("January").put(9, "Genesis 20:1-22:24; Matthew 7:15-29; Psalm 9:1-12; Proverbs 2:16-22");
+        target.get("January").put(10, "Genesis 23:1-24:51; Matthew 8:1-17; Psalm 9:13-20; Proverbs 3:1-6");
+        target.get("January").put(11, "Genesis 24:52-26:16; Matthew 8:18-34; Psalm 10:1-15; Proverbs 3:7-8");
+        target.get("January").put(12, "Genesis 26:17-27:46; Matthew 9:1-17; Psalm 10:16-18; Proverbs 3:9-10");
+        target.get("January").put(13, "Genesis 28:1-29:35; Matthew 9:18-38; Psalm 11:1-7; Proverbs 3:11-12");
+        target.get("January").put(14, "Genesis 30:1-31:16; Matthew 10:1-23; Psalm 12:1-8; Proverbs 3:13-15");
+        target.get("January").put(15, "Genesis 31:17-32:12; Matthew 10:24-11:6; Psalm 13:1-6; Proverbs 3:16-18");
+        target.get("January").put(16, "Genesis 32:13-34:31; Matthew 11:7-30; Psalm 14:1-7; Proverbs 3:19-20");
+        target.get("January").put(17, "Genesis 35:1-36:43; Matthew 12:1-21; Psalm 15:1-5; Proverbs 3:21-26");
+        target.get("January").put(18, "Genesis 37:1-38:30; Matthew 12:22-45; Psalm 16:1-11; Proverbs 3:27-32");
+        target.get("January").put(19, "Genesis 39:1-41:16; Matthew 12:46-13:23; Psalm 17:1-15; Proverbs 3:33-35");
+        target.get("January").put(20, "Genesis 41:17-42:17; Matthew 13:24-46; Psalm 18:1-15; Proverbs 4:1-6");
+        target.get("January").put(21, "Genesis 42:18-43:34; Matthew 13:47-14:12; Psalm 18:16-36; Proverbs 4:7-10");
+        target.get("January").put(22, "Genesis 44:1-45:28; Matthew 14:13-36; Psalm 18:37-50; Proverbs 4:11-13");
+        target.get("January").put(23, "Genesis 46:1-47:31; Matthew 15:1-28; Psalm 19:1-14; Proverbs 4:14-19");
+        target.get("January").put(24, "Genesis 48:1-49:33; Matthew 15:29-16:12; Psalm 20:1-9; Proverbs 4:20-27");
+        target.get("January").put(25, "Genesis 50:1 - Exodus 2:10; Matthew 16:13-17:9; Psalm 21:1-13; Proverbs 5:1-6");
+        target.get("January").put(26, "Exodus 2:11-3:22; Matthew 17:10-27; Psalm 22:1-18; Proverbs 5:7-14");
+        target.get("January").put(27, "Exodus 4:1-5:21; Matthew 18:1-20; Psalm 22:19-31; Proverbs 5:15-21");
+        target.get("January").put(28, "Exodus 5:22-7:25; Matthew 18:21-19:12; Psalm 23:1-6; Proverbs 5:22-23");
+        target.get("January").put(29, "Exodus 8:1-9:35; Matthew 19:13-30; Psalm 24:1-10; Proverbs 6:1-5");
+        target.get("January").put(30, "Exodus 10:1-12:13; Matthew 20:1-28; Psalm 25:1-15; Proverbs 6:6-11");
+        target.get("January").put(31, "Exodus 12:14-13:16; Matthew 20:29-21:22; Psalm 25:16-22; Proverbs 6:12-15");
+        target.get("February").put(1, "Exodus 13:17-15:18; Matthew 21:23-46; Psalm 26:1-12; Proverbs 6:16-19");
+        target.get("February").put(2, "Exodus 15:19-17:7; Matthew 22:1-33; Psalm 27:1-6; Proverbs 6:20-26");
+        target.get("February").put(3, "Exodus 17:8-19:15; Matthew 22:34-23:12; Psalm 27:7-14; Proverbs 6:27-35");
+        target.get("February").put(4, "Exodus 19:16-21:21; Matthew 23:13-39; Psalm 28:1-9; Proverbs 7:1-5");
+        target.get("February").put(5, "Exodus 21:22-23:13; Matthew 24:1-28; Psalm 29:1-11; Proverbs 7:6-23");
+        target.get("February").put(6, "Exodus 23:14-25:40; Matthew 24:29-51; Psalm 30:1-12; Proverbs 7:24-27");
+        target.get("February").put(7, "Exodus 26:1-27:21; Matthew 25:1-30; Psalm 31:1-8; Proverbs 8:1-11");
+        target.get("February").put(8, "Exodus 28:1-43; Matthew 25:31-26:13; Psalm 31:9-18; Proverbs 8:12-13");
+        target.get("February").put(9, "Exodus 29:1-30:10; Matthew 26:14-46; Psalm 31:19-24; Proverbs 8:14-26");
+        target.get("February").put(10, "Exodus 30:11-31:18; Matthew 26:47-68; Psalm 32:1-11; Proverbs 8:27-32");
+        target.get("February").put(11, "Exodus 32:1-33:23; Matthew 26:69-27:14; Psalm 33:1-11; Proverbs 8:33-36");
+        target.get("February").put(12, "Exodus 34:1-35:9; Matthew 27:15-31; Psalm 33:12-22; Proverbs 9:1-6");
+        target.get("February").put(13, "Exodus 35:10-36:38; Matthew 27:32-66; Psalm 34:1-10; Proverbs 9:7-8");
+        target.get("February").put(14, "Exodus 37:1-38:31; Matthew 28:1-20; Psalm 34:11-22; Proverbs 9:9-10");
+        target.get("February").put(15, "Exodus 39:1-40:38; Mark 1:1-28; Psalm 35:1-16; Proverbs 9:11-12");
+        target.get("February").put(16, "Leviticus 1:1-3:17; Mark 1:29-2:12; Psalm 35:17-28; Proverbs 9:13-18");
+        target.get("February").put(17, "Leviticus 4:1-5:19; Mark 2:13-3:6; Psalm 36:1-12; Proverbs 10:1-2");
+        target.get("February").put(18, "Leviticus 6:1-7:27; Mark 3:7-30; Psalm 37:1-11; Proverbs 10:3-4");
+        target.get("February").put(19, "Leviticus 7:28-9:6; Mark 3:31-4:25; Psalm 37:12-29; Proverbs 10:5");
+        target.get("February").put(20, "Leviticus 9:7-10:20; Mark 4:26-5:20; Psalm 37:30-40; Proverbs 10:6-7");
+        target.get("February").put(21, "Leviticus 11:1-12:8; Mark 5:21-43; Psalm 38:1-22; Proverbs 10:8-9");
+        target.get("February").put(22, "Leviticus 13:1-59; Mark 6:1-29; Psalm 39:1-13; Proverbs 10:10");
+        target.get("February").put(23, "Leviticus 14:1-57; Mark 6:30-56; Psalm 40:1-10; Proverbs 10:11-12");
+        target.get("February").put(24, "Leviticus 15:1-16:28; Mark 7:1-23; Psalm 40:11-17; Proverbs 10:13-14");
+        target.get("February").put(25, "Leviticus 16:29-18:30; Mark 7:24-8:10; Psalm 41:1-13; Proverbs 10:15-16");
+        target.get("February").put(26, "Leviticus 19:1-20:21; Mark 8:11-38; Psalm 42:1-11; Proverbs 10:17");
+        target.get("February").put(27, "Leviticus 20:22-22:16; Mark 9:1-29; Psalm 43:1-5; Proverbs 10:18");
+        target.get("February").put(28, "Leviticus 22:17-23:44; Mark 9:30-10:12; Psalm 44:1-8; Proverbs 10:19");
+        target.get("March").put(1, "Leviticus 24:1-25:46; Mark 10:13-31; Psalm 44:9-26; Proverbs 10:20-21");
+        target.get("March").put(2, "Leviticus 25:47-27:13; Mark 10:32-52; Psalm 45:1-17; Proverbs 10:22");
+        target.get("March").put(3, "Leviticus 27:14-; Numbers 1:54; Mark 11:1-26; Psalm 46:1-11; Proverbs 10:23");
+        target.get("March").put(4, "Numbers 2:1-3:51; Mark 11:27-12:17; Psalm 47:1-9; Proverbs 10:24-25");
+        target.get("March").put(5, "Numbers 4:1-5:31; Mark 12:18-37; Psalm 48:1-14; Proverbs 10:26");
+        target.get("March").put(6, "Numbers 6:1-7:89; Mark 12:38-13:13; Psalm 49:1-20; Proverbs 10:27-28");
+        target.get("March").put(7, "Numbers 8:1-9:23; Mark 13:14-37; Psalm 50:1-23; Proverbs 10:29-30");
+        target.get("March").put(8, "Numbers 10:1-11:23; Mark 14:1-21; Psalm 51:1-19; Proverbs 10:31-32");
+        target.get("March").put(9, "Numbers 11:24-13:33; Mark 14:22-52; Psalm 52:1-9; Proverbs 11:1-3");
+        target.get("March").put(10, "Numbers 14:1-15:16; Mark 14:53-72; Psalm 53:1-6; Proverbs 11:4");
+        target.get("March").put(11, "Numbers 15:17-16:40; Mark 15:1-47; Psalm 54:1-7; Proverbs 11:5-6");
+        target.get("March").put(12, "Numbers 16:41-18:32; Mark 16:1-20; Psalm 55:1-23; Proverbs 11:7");
+        target.get("March").put(13, "Numbers 19:1-20:29; Luke 1:1-25; Psalm 56:1-13; Proverbs 11:8");
+        target.get("March").put(14, "Numbers 21:1-22:20; Luke 1:26-56; Psalm 57:1-11; Proverbs 11:9-11");
+        target.get("March").put(15, "Numbers 22:21-23:30; Luke 1:57-80; Psalm 58:1-11; Proverbs 11:12-13");
+        target.get("March").put(16, "Numbers 24:1-25:18; Luke 2:1-35; Psalm 59:1-17; Proverbs 11:14");
+        target.get("March").put(17, "Numbers 26:1-51; Luke 2:36-52; Psalm 60:1-12; Proverbs 11:15");
+        target.get("March").put(18, "Numbers 26:52-28:15; Luke 3:1-22; Psalm 61:1-8; Proverbs 11:16-17");
+        target.get("March").put(19, "Numbers 28:16-29:40; Luke 3:23-38; Psalm 62:1-12; Proverbs 11:18-19");
+        target.get("March").put(20, "Numbers 30:1-31:54; Luke 4:1-30; Psalm 63:1-11; Proverbs 11:20-21");
+        target.get("March").put(21, "Numbers 32:1-33:39; Luke 4:31-5:11; Psalm 64:1-10; Proverbs 11:22");
+        target.get("March").put(22, "Numbers 33:40-35:34; Luke 5:12-28; Psalm 65:1-13; Proverbs 11:23");
+        target.get("March").put(23, "Numbers 36:1-; Deuteronomy 1:46; Luke 5:29-6:11; Psalm 66:1-20; Proverbs 11:24-26");
+        target.get("March").put(24, "Deuteronomy 2:1-3:29; Luke 6:12-38; Psalm 67:1-7; Proverbs 11:27");
+        target.get("March").put(25, "Deuteronomy 4:1-49; Luke 6:39-7:10; Psalm 68:1-18; Proverbs 11:28");
+        target.get("March").put(26, "Deuteronomy 5:1-6:25; Luke 7:11-35; Psalm 68:19-35; Proverbs 11:29-31");
+        target.get("March").put(27, "Deuteronomy 7:1-8:20; Luke 7:36-8:3; Psalm 69:1-18; Proverbs 12:1");
+        target.get("March").put(28, "Deuteronomy 9:1-10:22; Luke 8:4-21; Psalm 69:19-36; Proverbs 12:2-3");
+        target.get("March").put(29, "Deuteronomy 11:1-12:32; Luke 8:22-39; Psalm 70:1-5; Proverbs 12:4");
+        target.get("March").put(30, "Deuteronomy 13:1-15:23; Luke 8:40-9:6; Psalm 71:1-24; Proverbs 12:5-7");
+        target.get("March").put(31, "Deuteronomy 16:1-17:20; Luke 9:7-27; Psalm 72:1-20; Proverbs 12:8-9");
+        target.get("April").put(1, "Deuteronomy 18:1-; Luke 9:28-50; Psalm 73:1-28; Proverbs 12:10");
+        target.get("April").put(2, "Deuteronomy 21:1-22:30; Luke 9:51-10:12; Psalm 74:1-23; Proverbs 12:11");
+        target.get("April").put(3, "Deuteronomy 23:1-25:19; Luke 10:13-37; Psalm 75:1-10; Proverbs 12:12-14");
+        target.get("April").put(4, "Deuteronomy 26:1-27:26; Luke 10:38-11:13; Psalm 76:1-12; Proverbs 12:15-17");
+        target.get("April").put(5, "Deuteronomy 28:1-68; Luke 11:14-36; Psalm 77:1-20; Proverbs 12:18");
+        target.get("April").put(6, "Deuteronomy 29:1-30:20; Luke 11:37-12:7; Psalm 78:1-31; Proverbs 12:19-20");
+        target.get("April").put(7, "Deuteronomy 31:1-32:27; Luke 12:8-34; Psalm 78:32-55; Proverbs 12:21-23");
+        target.get("April").put(8, "Deuteronomy 32:28-52; Luke 12:35-59; Psalm 78:56-64; Proverbs 12:24");
+        target.get("April").put(9, "Deuteronomy 33:1-29; Luke 13:1-21; Psalm 78:65-72; Proverbs 12:25");
+        target.get("April").put(10, "Deuteronomy 34:1-; Joshua 2:24; Luke 13:22-14:6; Psalm 79:1-13; Proverbs 12:26");
+        target.get("April").put(11, "Joshua 3:1-4:24; Luke 14:7-35; Psalm 80:1-19; Proverbs 12:27-28");
+        target.get("April").put(12, "Joshua 5:1-7:15; Luke 15:1-32; Psalm 81:1-16; Proverbs 13:1");
+        target.get("April").put(13, "Joshua 7:16-9:2; Luke 16:1-18; Psalm 82:1-8; Proverbs 13:2-3");
+        target.get("April").put(14, "Joshua 9:3-10:43; Luke 16:19-17:10; Psalm 83:1-18; Proverbs 13:4");
+        target.get("April").put(15, "Joshua 11:1-12:24; Luke 17:11-37; Psalm 84:1-12; Proverbs 13:5-6");
+        target.get("April").put(16, "Joshua 13:1-14:15; Luke 18:1-17; Psalm 85:1-13; Proverbs 13:7-8");
+        target.get("April").put(17, "Joshua 15:1-63; Luke 18:18-43; Psalm 86:1-17; Proverbs 13:9-10");
+        target.get("April").put(18, "Joshua 16:1-18:28; Luke 19:1-27; Psalm 87:1-7; Proverbs 13:11");
+        target.get("April").put(19, "Joshua 19:1-20:9; Luke 19:28-48; Psalm 88:1-18; Proverbs 13:12-14");
+        target.get("April").put(20, "Joshua 21:1-22:20; Luke 20:1-26; Psalm 89:1-13; Proverbs 13:15-16");
+        target.get("April").put(21, "Joshua 22:21-23:16; Luke 20:27-47; Psalm 89:14-37; Proverbs 13:17-19");
+        target.get("April").put(22, "Joshua 24:1-33; Luke 21:1-28; Psalm 89:38-52; Proverbs 13:20-23");
+        target.get("April").put(23, "Judges 1:1-2:9; Luke 21:29-22:13; Psalm 90:1-91:16; Proverbs 13:24-25");
+        target.get("April").put(24, "Judges 2:10-3:31; Luke 22:14-34; Psalm 92:1-93:5; Proverbs 14:1-2");
+        target.get("April").put(25, "Judges 4:1-5:31; Luke 22:35-53; Psalm 94:1-23; Proverbs 14:3-4");
+        target.get("April").put(26, "Judges 6:1-40; Luke 22:54-23:12; Psalm 95:1-96:13; Proverbs 14:5-6");
+        target.get("April").put(27, "Judges 7:1-8:17; Luke 23:13-43; Psalm 97:1-98:9; Proverbs 14:7-8");
+        target.get("April").put(28, "Judges 8:18-9:21; Luke 23:44-24:12; Psalm 99:1-9; Proverbs 14:9-10");
+        target.get("April").put(29, "Judges 9:22-10:18; Luke 24:13-53; Psalm 100:1-5; Proverbs 14:11-12");
+        target.get("April").put(30, "Judges 11:1-12:15; John 1:1-28; Psalm 101:1-8; Proverbs 14:13-14");
+        target.get("May").put(1, "Judges 13:1-14:20; John 1:29-51; Psalm 102:1-28; Proverbs 14:15-16");
+        target.get("May").put(2, "Judges 15:1-16:31; John 2:1-25; Psalm 103:1-22; Proverbs 14:17-19");
+        target.get("May").put(3, "Judges 17:1-18:31; John 3:1-21; Psalm 104:1-24; Proverbs 14:20-21");
+        target.get("May").put(4, "Judges 19:1-20:48; John 3:22-4:3; Psalm 104:24-35; Proverbs 14:22-24");
+        target.get("May").put(5, "Judges 21:1-Ruth 1:22; John 4:4-42; Psalm 105:1-15; Proverbs 14:25");
+        target.get("May").put(6, "Ruth 2:1-4:22; John 4:43-54; Psalm 105:16-36; Proverbs 14:26-27");
+        target.get("May").put(7, "1 Samuel 1:1-2:21; John 5:1-23; Psalm 105:37-45; Proverbs 14:28-29");
+        target.get("May").put(8, "1 Samuel 2:22-4:22; John 5:24-47; Psalm 106:1-12; Proverbs 14:30-31");
+        target.get("May").put(9, "1 Samuel 5:1-7:17; John 6:1-21; Psalm 106:13-31; Proverbs 14:32-33");
+        target.get("May").put(10, "1 Samuel 8:1-9:27; John 6:22-42; Psalm 106:32-48; Proverbs 14:34-35");
+        target.get("May").put(11, "1 Samuel 10:1-11:15; John 6:43-71; Psalm 107:1-43; Proverbs 15:1-3");
+        target.get("May").put(12, "1 Samuel 12:1-13:23; John 7:1-30; Psalm 108:1-13; Proverbs 15:4");
+        target.get("May").put(13, "1 Samuel 14:1-52; John 7:31-53; Psalm 109:1-31; Proverbs 15:5-7");
+        target.get("May").put(14, "1 Samuel 15:1-16:23; John 8:1-20; Psalm 110:1-7; Proverbs 15:8-10");
+        target.get("May").put(15, "1 Samuel 17:1-18:4; John 8:21-30; Psalm 111:1-10; Proverbs 15:11");
+        target.get("May").put(16, "1 Samuel 18:5-19:24; John 8:31-59; Psalm 112:1-10; Proverbs 15:12-14");
+        target.get("May").put(17, "1 Samuel 20:1-21:15; John 9:1-41; Psalm 113:1-114:8; Proverbs 15:15-17");
+        target.get("May").put(18, "1 Samuel 22:1-23:29; John 10:1-21; Psalm 115:1-18; Proverbs 15:18-19");
+        target.get("May").put(19, "1 Samuel 24:1-25:44; John 10:22-42; Psalm 116:1-19; Proverbs 15:20-21");
+        target.get("May").put(20, "1 Samuel 26:1-28:25; John 11:1-54; Psalm 117:1-2; Proverbs 15:22-23");
+        target.get("May").put(21, "1 Samuel 29:1-31:13; John 11:55-12:19; Psalm 118:1-18; Proverbs 15:24-26");
+        target.get("May").put(22, "2 Samuel 1:1-2:11; John 12:20-50; Psalm 118:19-29; Proverbs 15:27-28");
+        target.get("May").put(23, "2 Samuel 2:12-3:39; John 13:1-30; Psalm 119:1-16; Proverbs 15:29-30");
+        target.get("May").put(24, "2 Samuel 4:1-6:23; John 13:31-14:14; Psalm 119:17-32; Proverbs 15:31-32");
+        target.get("May").put(25, "2 Samuel 7:1-8:18; John 14:15-31; Psalm 119:33-48; Proverbs 15:33");
+        target.get("May").put(26, "2 Samuel 9:1-11:27; John 15:1-27; Psalm 119:49-64; Proverbs 16:1-3");
+        target.get("May").put(27, "2 Samuel 12:1-31; John 16:1-33; Psalm 119:65-80; Proverbs 16:4-5");
+        target.get("May").put(28, "2 Samuel 13:1-39; John 17:1-26; Psalm 119:81-96; Proverbs 16:6-7");
+        target.get("May").put(29, "2 Samuel 14:1-15:22; John 18:1-24; Psalm 119:97-112; Proverbs 16:8-9");
+        target.get("May").put(30, "2 Samuel 15:23-16:23; John 18:25-19:22; Psalm 119:113-128; Proverbs 16:10-11");
+        target.get("May").put(31, "2 Samuel 17:1-29; John 19:23-42; Psalm 119:129-152; Proverbs 16:12-13");
+        target.get("June").put(1, "2 Samuel 18:1-19:10; John 20:1-31; Psalm 119:153-176; Proverbs 16:14-15");
+        target.get("June").put(2, "2 Samuel 19:11-20:13; John 21:1-25; Psalm 120:1-7; Proverbs 16:16-17");
+        target.get("June").put(3, "2 Samuel 20:14-21:22; Acts 1:1-26; Psalm 121:1-8; Proverbs 16:18");
+        target.get("June").put(4, "2 Samuel 22:1-23:23; Acts 2:1-47; Psalm 122:1-9; Proverbs 16:19-20");
+        target.get("June").put(5, "2 Samuel 23:24-24:25; Acts 3:1-26; Psalm 123:1-4; Proverbs 16:21-23");
+        target.get("June").put(6, "1 Kings 1:1-53; Acts 4:1-37; Psalm 124:1-8; Proverbs 16:24");
+        target.get("June").put(7, "1 Kings 2:1-3:2; Acts 5:1-42; Psalm 125:1-5; Proverbs 16:25");
+        target.get("June").put(8, "1 Kings 3:3-4:34; Acts 6:1-15; Psalm 126:1-6; Proverbs 16:26-27");
+        target.get("June").put(9, "1 Kings 5:1-6:38; Acts 7:1-29; Psalm 127:1-5; Proverbs 16:28-30");
+        target.get("June").put(10, "1 Kings 7:1-51; Acts 7:30-50; Psalm 128:1-6; Proverbs 16:31-33");
+        target.get("June").put(11, "1 Kings 8:1-66; Acts 7:51-8:13; Psalm 129:1-8; Proverbs 17:1");
+        target.get("June").put(12, "1 Kings 9:1-10:29; Acts 8:14-40; Psalm 130:1-8; Proverbs 17:2-3");
+        target.get("June").put(13, "1 Kings 11:1-12:19; Acts 9:1-25; Psalm 131:1-3; Proverbs 17:4-5");
+        target.get("June").put(14, "1 Kings 12:20-13:34; Acts 9:26-43; Psalm 132:1-18; Proverbs 17:6");
+        target.get("June").put(15, "1 Kings 14:1-15:24; Acts 10:1-23; Psalm 133:1-3; Proverbs 17:7-8");
+        target.get("June").put(16, "1 Kings 15:25-17:24; Acts 10:24-48; Psalm 134:1-3; Proverbs 17:9-11");
+        target.get("June").put(17, "1 Kings 18:1-46; Acts 11:1-30; Psalm 135:1-21; Proverbs 17:12-13");
+        target.get("June").put(18, "1 Kings 19:1-21; Acts 12:1-23; Psalm 136:1-26; Proverbs 17:14-15");
+        target.get("June").put(19, "1 Kings 20:1-21:29; Acts 12:24-13:15; Psalm 137:1-9; Proverbs 17:16");
+        target.get("June").put(20, "1 Kings 22:1-53; Acts 13:16-41; Psalm 138:1-8; Proverbs 17:17-18");
+        target.get("June").put(21, "2 Kings 1:1-2:25; Acts 13:42-14:7; Psalm 139:1-24; Proverbs 17:19-21");
+        target.get("June").put(22, "2 Kings 3:1-4:17; Acts 14:8-28; Psalm 140:1-13; Proverbs 17:22");
+        target.get("June").put(23, "2 Kings 4:18-5:27; Acts 15:1-35; Psalm 141:1-10; Proverbs 17:23");
+        target.get("June").put(24, "2 Kings 6:1-7:20; Acts 15:36-16:15; Psalm 142:1-7; Proverbs 17:24-25");
+        target.get("June").put(25, "2 Kings 8:1-9:13; Acts 16:16-40; Psalm 143:1-12; Proverbs 17:26");
+        target.get("June").put(26, "2 Kings 9:14-10:31; Acts 17:1-34; Psalm 144:1-15; Proverbs 17:27-28");
+        target.get("June").put(27, "2 Kings 10:32-12:21; Acts 18:1-22; Psalm 145:1-21; Proverbs 18:1");
+        target.get("June").put(28, "2 Kings 13:1-14:29; Acts 18:23-19:12; Psalm 146:1-10; Proverbs 18:2-3");
+        target.get("June").put(29, "2 Kings 15:1-16:20; Acts 19:13-41; Psalm 147:1-20; Proverbs 18:4-5");
+        target.get("June").put(30, "2 Kings 17:1-18:12; Acts 20:1-38; Psalm 148:1-14; Proverbs 18:6-7");
+        target.get("July").put(1, "2 Kings 18:13-19:37; Acts 21:1-17; Psalm 149:1-9; Proverbs 18:8");
+        target.get("July").put(2, "2 Kings 20:1-22:2; Acts 21:18-36; Psalm 150:1-6; Proverbs 18:9-10");
+        target.get("July").put(3, "2 Kings 22:3-23:30; Acts 21:37-22:16; Psalm 1:1-6; Proverbs 18:11-12");
+        target.get("July").put(4, "2 Kings 23:31-25:30; Acts 22:17-23:10; Psalm 2:1-12; Proverbs 18:13");
+        target.get("July").put(5, "1 Chronicles 1:1-2:17; Acts 23:11-35; Psalm 3:1-8; Proverbs 18:14-15");
+        target.get("July").put(6, "1 Chronicles 2:18-4:4; Acts 24:1-27; Psalm 4:1-8; Proverbs 18:16-18");
+        target.get("July").put(7, "1 Chronicles 4:5-5:17; Acts 25:1-27; Psalm 5:1-12; Proverbs 18:19");
+        target.get("July").put(8, "1 Chronicles 5:18-6:81; Acts 26:1-32; Psalm 6:1-10; Proverbs 18:20-21");
+        target.get("July").put(9, "1 Chronicles 7:1-8:40; Acts 27:1-20; Psalm 7:1-17; Proverbs 18:22");
+        target.get("July").put(10, "1 Chronicles 9:1-10:14; Acts 27:21-44; Psalm 8:1-9; Proverbs 18:23-24");
+        target.get("July").put(11, "1 Chronicles 11:1-12:18; Acts 28:1-31; Psalm 9:1-12; Proverbs 19:1-3");
+        target.get("July").put(12, "1 Chronicles 12:19-14:17; Romans 1:1-17; Psalm 9:13-20; Proverbs 19:4-5");
+        target.get("July").put(13, "1 Chronicles 15:1-16:36; Romans 1:18-32; Psalm 10:1-15; Proverbs 19:6-7");
+        target.get("July").put(14, "1 Chronicles 16:37-18:17; Romans 2:1-24; Psalm 10:16-18; Proverbs 19:8-9");
+        target.get("July").put(15, "1 Chronicles 19:1-21:30; Romans 2:25-3:8; Psalm 11:1-7; Proverbs 19:10-12");
+        target.get("July").put(16, "1 Chronicles 22:1-23:32; Romans 3:9-31; Psalm 12:1-8; Proverbs 19:13-14");
+        target.get("July").put(17, "1 Chronicles 24:1-26:11; Romans 4:1-12; Psalm 13:1-6; Proverbs 19:15-16");
+        target.get("July").put(18, "1 Chronicles 26:12-27:34; Romans 4:13-5:5; Psalm 14:1-7; Proverbs 19:17");
+        target.get("July").put(19, "1 Chronicles 28:1-29:30; Romans 5:6-21; Psalm 15:1-5; Proverbs 19:18-19");
+        target.get("July").put(20, "2 Chronicles 1:1-3:17; Romans 6:1-23; Psalm 16:1-11; Proverbs 19:20-21");
+        target.get("July").put(21, "2 Chronicles 4:1-6:11; Romans 7:1-13; Psalm 17:1-15; Proverbs 19:22-23");
+        target.get("July").put(22, "2 Chronicles 6:12-8:10; Romans 7:14-8:8; Psalm 18:1-15; Proverbs 19:24-25");
+        target.get("July").put(23, "2 Chronicles 8:11-10:19; Romans 8:9-25; Psalm 18:16-36; Proverbs 19:26");
+        target.get("July").put(24, "2 Chronicles 11:1-13:22; Romans 8:26-39; Psalm 18:37-50; Proverbs 19:27-29");
+        target.get("July").put(25, "2 Chronicles 14:1-16:14; Romans 9:1-24; Psalm 19:1-14; Proverbs 20:1");
+        target.get("July").put(26, "2 Chronicles 17:1-18:34; Romans 9:25-10:13; Psalm 20:1-9; Proverbs 20:2-3");
+        target.get("July").put(27, "2 Chronicles 19:1-20:37; Romans 10:14-11:12; Psalm 21:1-13; Proverbs 20:4-6");
+        target.get("July").put(28, "2 Chronicles 21:1-23:21; Romans 11:13-36; Psalm 22:1-18; Proverbs 20:7");
+        target.get("July").put(29, "2 Chronicles 24:1-25:28; Romans 12:1-21; Psalm 22:19-31; Proverbs 20:8-10");
+        target.get("July").put(30, "2 Chronicles 26:1-28:27; Romans 13:1-14; Psalm 23:1-6; Proverbs 20:11");
+        target.get("July").put(31, "2 Chronicles 29:1-36; Romans 14:1-23; Psalm 24:1-10; Proverbs 20:12");
+        target.get("August").put(1, "2 Chronicles 30:1-31:21; Romans 15:1-22; Psalm 25:1-15; Proverbs 20:13-15");
+        target.get("August").put(2, "2 Chronicles 32:1-33:13; Romans 15:23-16:9; Psalm 25:16-22; Proverbs 20:16-18");
+        target.get("August").put(3, "2 Chronicles 33:14-34:33; Romans 16:10-27; Psalm 26:1-12; Proverbs 20:19");
+        target.get("August").put(4, "2 Chronicles 35:1-36:23; 1 Corinthians 1:1-17; Psalm 27:1-6; Proverbs 20:20-21");
+        target.get("August").put(5, "Ezra 1:1-2:70; 1 Corinthians 1:18-2:5; Psalm 27:7-14; Proverbs 20:22-23");
+        target.get("August").put(6, "Ezra 3:1-4:23; 1 Corinthians 2:6-3:4; Psalm 28:1-9; Proverbs 20:24-25");
+        target.get("August").put(7, "Ezra 4:24-6:22; 1 Corinthians 3:5-23; Psalm 29:1-11; Proverbs 20:26-27");
+        target.get("August").put(8, "Ezra 7:1-8:20; 1 Corinthians 4:1-21; Psalm 30:1-12; Proverbs 20:28-30");
+        target.get("August").put(9, "Ezra 8:21-9:15; 1 Corinthians 5:1-13; Psalm 31:1-8; Proverbs 21:1-2");
+        target.get("August").put(10, "Ezra 10:1-44; 1 Corinthians 6:1-20; Psalm 31:9-18; Proverbs 21:3");
+        target.get("August").put(11, "Nehemiah 1:1-3:14; 1 Corinthians 7:1-24; Psalm 31:19-24; Proverbs 21:4");
+        target.get("August").put(12, "Nehemiah 3:15-5:13; 1 Corinthians 7:25-40; Psalm 32:1-11; Proverbs 21:5-7");
+        target.get("August").put(13, "Nehemiah 5:14-7:73; 1 Corinthians 8:1-13; Psalm 33:1-11; Proverbs 21:8-10");
+        target.get("August").put(14, "Nehemiah 7:73-9:21; 1 Corinthians 9:1-18; Psalm 33:12-22; Proverbs 21:11-12");
+        target.get("August").put(15, "Nehemiah 9:22-10:39; 1 Corinthians 9:19-10:13; Psalm 34:1-10; Proverbs 21:13");
+        target.get("August").put(16, "Nehemiah 11:1-12:26; 1 Corinthians 10:14-33; Psalm 34:11-22; Proverbs 21:14-16");
+        target.get("August").put(17, "Nehemiah 12:27-13:31; 1 Corinthians 11:1-16; Psalm 35:1-16; Proverbs 21:17-18");
+        target.get("August").put(18, "Esther 1:1-3:15; 1 Corinthians 11:17-34; Psalm 35:17-28; Proverbs 21:19-20");
+        target.get("August").put(19, "Esther 4:1-7:10; 1 Corinthians 12:1-26; Psalm 36:1-12; Proverbs 21:21-22");
+        target.get("August").put(20, "Esther 8:1-10:3; 1 Corinthians 12:27-13:13; Psalm 37:1-11; Proverbs 21:23-24");
+        target.get("August").put(21, "Job 1:1-3:26; 1 Corinthians 14:1-17; Psalm 37:12-29; Proverbs 21:25-26");
+        target.get("August").put(22, "Job 4:1-7:21; 1 Corinthians 14:18-40; Psalm 37:30-40; Proverbs 21:27");
+        target.get("August").put(23, "Job 8:1-11:20; 1 Corinthians 15:1-28; Psalm 38:1-22; Proverbs 21:28-29");
+        target.get("August").put(24, "Job 12:1-15:35; 1 Corinthians 15:29-58; Psalm 39:1-13; Proverbs 21:30-31");
+        target.get("August").put(25, "Job 16:1-19:29; 1 Corinthians 16:1-24; Psalm 40:1-10; Proverbs 22:1");
+        target.get("August").put(26, "Job 20:1-22:30; 2 Corinthians 1:1-11; Psalm 40:11-17; Proverbs 22:2-4");
+        target.get("August").put(27, "Job 23:1-27:23; 2 Corinthians 1:12-2:11; Psalm 41:1-13; Proverbs 22:5-6");
+        target.get("August").put(28, "Job 28:1-30:31; 2 Corinthians 2:12-17; Psalm 42:1-11; Proverbs 22:7");
+        target.get("August").put(29, "Job 31:1-33:33; 2 Corinthians 3:1-18; Psalm 43:1-5; Proverbs 22:8-9");
+        target.get("August").put(30, "Job 34:1-36:33; 2 Corinthians 4:1-12; Psalm 44:1-8; Proverbs 22:10-12");
+        target.get("August").put(31, "Job 37:1-39:30; 2 Corinthians 4:13-5:10; Psalm 44:9-26; Proverbs 22:13");
+        target.get("September").put(1, "Job 40:1-42:17; 2 Corinthians 5:11-21; Psalm 45:1-17; Proverbs 22:14");
+        target.get("September").put(2, "Ecclesiastes 1:1-3:22; 2 Corinthians 6:1-13; Psalm 46:1-11; Proverbs 22:15");
+        target.get("September").put(3, "Ecclesiastes 4:1-6:12; 2 Corinthians 6:14-7:7; Psalm 47:1-9; Proverbs 22:16");
+        target.get("September").put(4, "Ecclesiastes 7:1-9:18; 2 Corinthians 7:8-16; Psalm 48:1-14; Proverbs 22:17-19");
+        target.get("September").put(5, "Ecclesiastes 10:1-12:14; 2 Corinthians 8:1-15; Psalm 49:1-20; Proverbs 22:20-21");
+        target.get("September").put(6, "Song of Solomon 1:1-; 2 Corinthians 8:16-24; Psalm 50:1-23; Proverbs 22:22-23");
+        target.get("September").put(7, "Song of Solomon 5:1-8:14; 2 Corinthians 9:1-15; Psalm 51:1-19; Proverbs 22:24-25");
+        target.get("September").put(8, "Isaiah 1:1-2:22; 2 Corinthians 10:1-18; Psalm 52:1-9; Proverbs 22:26-27");
+        target.get("September").put(9, "Isaiah 3:1-5:30; 2 Corinthians 11:1-15; Psalm 53:1-6; Proverbs 22:28-29");
+        target.get("September").put(10, "Isaiah 6:1-7:25; 2 Corinthians 11:16-33; Psalm 54:1-7; Proverbs 23:1-3");
+        target.get("September").put(11, "Isaiah 8:1-9:21; 2 Corinthians 12:1-10; Psalm 55:1-23; Proverbs 23:4-5");
+        target.get("September").put(12, "Isaiah 10:1-11:16; 2 Corinthians 12:11-21; Psalm 56:1-13; Proverbs 23:6-8");
+        target.get("September").put(13, "Isaiah 12:1-14:32; 2 Corinthians 13:1-14; Psalm 57:1-11; Proverbs 23:9-11");
+        target.get("September").put(14, "Isaiah 15:1-18:7; Galatians 1:1-24; Psalm 58:1-11; Proverbs 23:12");
+        target.get("September").put(15, "Isaiah 19:1-21:17; Galatians 2:1-16; Psalm 59:1-17; Proverbs 23:13-14");
+        target.get("September").put(16, "Isaiah 22:1-24:23; Galatians 2:17-3:9; Psalm 60:1-12; Proverbs 23:15-16");
+        target.get("September").put(17, "Isaiah 25:1-28:13; Galatians 3:10-22; Psalm 61:1-8; Proverbs 23:17-18");
+        target.get("September").put(18, "Isaiah 28:14-30:11; Galatians 3:23-4:31; Psalm 62:1-12; Proverbs 23:19-21");
+        target.get("September").put(19, "Isaiah 30:12-33:9; Galatians 5:1-12; Psalm 63:1-11; Proverbs 23:22");
+        target.get("September").put(20, "Isaiah 33:10-36:22; Galatians 5:13-26; Psalm 64:1-10; Proverbs 23:23");
+        target.get("September").put(21, "Isaiah 37:1-38:22; Galatians 6:1-18; Psalm 65:1-13; Proverbs 23:24");
+        target.get("September").put(22, "Isaiah 39:1-41:16; Ephesians 1:1-23; Psalm 66:1-20; Proverbs 23:25-28");
+        target.get("September").put(23, "Isaiah 41:17-43:13; Ephesians 2:1-22; Psalm 67:1-7; Proverbs 23:29-35");
+        target.get("September").put(24, "Isaiah 43:14-45:10; Ephesians 3:1-21; Psalm 68:1-18; Proverbs 24:1-2");
+        target.get("September").put(25, "Isaiah 45:11-48:11; Ephesians 4:1-16; Psalm 68:19-35; Proverbs 24:3-4");
+        target.get("September").put(26, "Isaiah 48:12-50:11; Ephesians 4:17-32; Psalm 69:1-18; Proverbs 24:5-6");
+        target.get("September").put(27, "Isaiah 51:1-53:12; Ephesians 5:1-33; Psalm 69:19-36; Proverbs 24:7");
+        target.get("September").put(28, "Isaiah 54:1-57:14; Ephesians 6:1-24; Psalm 70:1-5; Proverbs 24:8");
+        target.get("September").put(29, "Isaiah 57:15-59:21; Philippians 1:1-26; Psalm 71:1-24; Proverbs 24:9-10");
+        target.get("September").put(30, "Isaiah 60:1-62:5; Philippians 1:27-2:18; Psalm 72:1-20; Proverbs 24:11-12");
+        target.get("October").put(1, "Isaiah 62:6-65:25; Philippians 2:19-3:3; Psalm 73:1-28; Proverbs 24:13-14");
+        target.get("October").put(2, "Isaiah 66:1-24; Philippians 3:4-21; Psalm 74:1-23; Proverbs 24:15-16");
+        target.get("October").put(3, "Jeremiah 1:1-2:30; Philippians 4:1-23; Psalm 75:1-10; Proverbs 24:17-20");
+        target.get("October").put(4, "Jeremiah 2:31-4:18; Colossians 1:1-17; Psalm 76:1-12; Proverbs 24:21-22");
+        target.get("October").put(5, "Jeremiah 4:19-6:15; Colossians 1:18-2:7; Psalm 77:1-20; Proverbs 24:23-25");
+        target.get("October").put(6, "Jeremiah 6:16-8:7; Colossians 2:8-23; Psalm 78:1-31; Proverbs 24:26");
+        target.get("October").put(7, "Jeremiah 8:8-9:26; Colossians 3:1-17; Psalm 78:32-55; Proverbs 24:27");
+        target.get("October").put(8, "Jeremiah 10:1-11:23; Colossians 3:18-4:18; Psalm 78:56-72; Proverbs 24:28-29");
+        target.get("October").put(9, "Jeremiah 12:1-14:10; 1 Thessalonians 1:1-2:8; Psalm 79:1-13; Proverbs 24:30-34");
+        target.get("October").put(10, "Jeremiah 14:11-16:15; 1 Thessalonians 2:9-3:13; Psalm 80:1-19; Proverbs 25:1-5");
+        target.get("October").put(11, "Jeremiah 16:16-18:23; 1 Thessalonians 4:1-5:3; Psalm 81:1-16; Proverbs 25:6-8");
+        target.get("October").put(12, "Jeremiah 19:1-21:14; 1 Thessalonians 5:4-28; Psalm 82:1-8; Proverbs 25:9-10");
+        target.get("October").put(13, "Jeremiah 22:1-23:20; 2 Thessalonians 1:1-12; Psalm 83:1-18; Proverbs 25:11-14");
+        target.get("October").put(14, "Jeremiah 23:21-25:38; 2 Thessalonians 2:1-17; Psalm 84:1-12; Proverbs 25:15");
+        target.get("October").put(15, "Jeremiah 26:1-27:22; 2 Thessalonians 3:1-18; Psalm 85:1-13; Proverbs 25:16");
+        target.get("October").put(16, "Jeremiah 28:1-29:32; 1 Timothy 1:1-20; Psalm 86:1-17; Proverbs 25:17");
+        target.get("October").put(17, "Jeremiah 30:1-31:26; 1 Timothy 2:1-15; Psalm 87:1-7; Proverbs 25:18-19");
+        target.get("October").put(18, "Jeremiah 31:27-32:44; 1 Timothy 3:1-16; Psalm 88:1-18; Proverbs 25:20-22");
+        target.get("October").put(19, "Jeremiah 33:1-34:22; 1 Timothy 4:1-16; Psalm 89:1-13; Proverbs 25:23-24");
+        target.get("October").put(20, "Jeremiah 35:1-36:32; 1 Timothy 5:1-25; Psalm 89:14-37; Proverbs 25:25-27");
+        target.get("October").put(21, "Jeremiah 37:1-38:28; 1 Timothy 6:1-21; Psalm 89:38-52; Proverbs 25:28");
+        target.get("October").put(22, "Jeremiah 39:1-41:18; 2 Timothy 1:1-18; Psalm 90:1-91:16; Proverbs 26:1-2");
+        target.get("October").put(23, "Jeremiah 42:1-44:23; 2 Timothy 2:1-21; Psalm 92:1-93; Proverbs 26:3-5");
+        target.get("October").put(24, "Jeremiah 44:24-47:7; 2 Timothy 2:22-3:17; Psalm 94:1-23; Proverbs 26:6-8");
+        target.get("October").put(25, "Jeremiah 48:1-49:22; 2 Timothy 4:1-22; Psalm 95:1-96:13; Proverbs 26:9-12");
+        target.get("October").put(26, "Jeremiah 49:23-50:46; Titus 1:1-16; Psalm 97:1-98:9; Proverbs 26:13-16");
+        target.get("October").put(27, "Jeremiah 51:1-53; Titus 2:1-15; Psalm 99:1-9; Proverbs 26:17");
+        target.get("October").put(28, "Jeremiah 51:54-52:34; Titus 3:1-15; Psalm 100:1-5; Proverbs 26:18-19");
+        target.get("October").put(29, "Lamentations 1:1-2:22; Philemon 1:1-25; Psalm 101:1-8; Proverbs 26:20");
+        target.get("October").put(30, "Lamentations 3:1-66; Hebrews 1:1-14; Psalm 102:1-28; Proverbs 26:21-22");
+        target.get("October").put(31, "Lamentations 4:1-5:22; Hebrews 2:1-18; Psalm 103:1-22; Proverbs 26:23");
+        target.get("November").put(1, "Ezekiel 1:1-3:15; Hebrews 3:1-19; Psalm 104:1-23; Proverbs 26:24-26");
+        target.get("November").put(2, "Ezekiel 3:16-6:14; Hebrews 4:1-16; Psalm 104:24-35; Proverbs 26:27");
+        target.get("November").put(3, "Ezekiel 7:1-9:11; Hebrews 5:1-14; Psalm 105:1-15; Proverbs 26:28");
+        target.get("November").put(4, "Ezekiel 10:1-11:25; Hebrews 6:1-20; Psalm 105:16-36; Proverbs 27:1-2");
+        target.get("November").put(5, "Ezekiel 12:1-14:11; Hebrews 7:1-17; Psalm 105:37-45; Proverbs 27:3");
+        target.get("November").put(6, "Ezekiel 14:12-16:41; Hebrews 7:18-28; Psalm 106:1-12; Proverbs 27:4-6");
+        target.get("November").put(7, "Ezekiel 16:42-17:24; Hebrews 8:1-13; Psalm 106:13-31; Proverbs 27:7-9");
+        target.get("November").put(8, "Ezekiel 18:1-19:14; Hebrews 9:1-10; Psalm 106:32-48; Proverbs 27:10");
+        target.get("November").put(9, "Ezekiel 20:1-49; Hebrews 9:11-28; Psalm 107:1-43; Proverbs 27:11");
+        target.get("November").put(10, "Ezekiel 21:1-22:31; Hebrews 10:1-17; Psalm 108:1-13; Proverbs 27:12");
+        target.get("November").put(11, "Ezekiel 23:1-49; Hebrews 10:18-39; Psalm 109:1-31; Proverbs 27:13");
+        target.get("November").put(12, "Ezekiel 24:1-26:21; Hebrews 11:1-16; Psalm 110:1-7; Proverbs 27:14");
+        target.get("November").put(13, "Ezekiel 27:1-28:26; Hebrews 11:17-31; Psalm 111:1-10; Proverbs 27:15-16");
+        target.get("November").put(14, "Ezekiel 29:1-30:26; Hebrews 11:32-12:13; Psalm 112:1-10; Proverbs 27:17");
+        target.get("November").put(15, "Ezekiel 31:1-32:32; Hebrews 12:14-29; Psalm 113:1-114:8; Proverbs 27:18-20");
+        target.get("November").put(16, "Ezekiel 33:1-34:31; Hebrews 13:1-25; Psalm 115:1-18; Proverbs 27:21-22");
+        target.get("November").put(17, "Ezekiel 35:1-36:38; James 1:1-18; Psalm 116:1-19; Proverbs 27:23-27");
+        target.get("November").put(18, "Ezekiel 37:1-38:23; James 1:19-2:17; Psalm 117:1-2; Proverbs 28:1");
+        target.get("November").put(19, "Ezekiel 39:1-40:27; James 2:18-3:18; Psalm 118:1-18; Proverbs 28:2");
+        target.get("November").put(20, "Ezekiel 40:28-41:26; James 4:1-17; Psalm 118:19-29; Proverbs 28:3-5");
+        target.get("November").put(21, "Ezekiel 42:1-43:27; James 5:1-20; Psalm 119:1-16; Proverbs 28:6-7");
+        target.get("November").put(22, "Ezekiel 44:1-45:12; 1 Peter 1:1-12; Psalm 119:17-32; Proverbs 28:8-10");
+        target.get("November").put(23, "Ezekiel 45:13-46:24; 1 Peter 1:13-2:10; Psalm 119:33-48; Proverbs 28:11");
+        target.get("November").put(24, "Ezekiel 47:1-48:35; 1 Peter 2:11-3:7; Psalm 119:49-64; Proverbs 28:12-13");
+        target.get("November").put(25, "Daniel 1:1-2:23; 1 Peter 3:8-4:6; Psalm 119:65-80; Proverbs 28:14");
+        target.get("November").put(26, "Daniel 2:24-3:30; 1 Peter 4:7-5:14; Psalm 119:81-96; Proverbs 28:15-16");
+        target.get("November").put(27, "Daniel 4:1-37; 2 Peter 1:1-21; Psalm 119:97-112; Proverbs 28:17-18");
+        target.get("November").put(28, "Daniel 5:1-31; 2 Peter 2:1-22; Psalm 119:113-128; Proverbs 28:19-20");
+        target.get("November").put(29, "Daniel 6:1-28; 2 Peter 3:1-18; Psalm 119:129-152; Proverbs 28:21-22");
+        target.get("November").put(30, "Daniel 7:1-28; 1 John 1:1-10; Psalm 119:153-176; Proverbs 28:23-24");
+        target.get("December").put(1, "Daniel 8:1-27; 1 John 2:1-17; Psalm 120:1-7; Proverbs 28:25-26");
+        target.get("December").put(2, "Daniel 9:1-11:1; 1 John 2:18-3:6; Psalm 121:1-8; Proverbs 28:27-28");
+        target.get("December").put(3, "Daniel 11:2-35; 1 John 3:7-24; Psalm 122:1-9; Proverbs 29:1");
+        target.get("December").put(4, "Daniel 11:36-12:13; 1 John 4:1-21; Psalm 123:1-4; Proverbs 29:2-4");
+        target.get("December").put(5, "Hosea 1:1-3:5; 1 John 5:1-21; Psalm 124:1-8; Proverbs 29:5-8");
+        target.get("December").put(6, "Hosea 4:1-5:15; 2 John 1:1-13; Psalm 125:1-5; Proverbs 29:9-11");
+        target.get("December").put(7, "Hosea 6:1-9:17; 3 John 1:1-15; Psalm 126:1-6; Proverbs 29:12-14");
+        target.get("December").put(8, "Hosea 10:1-14:9; Jude 1:1-25; Psalm 127:1-5; Proverbs 29:15-17");
+        target.get("December").put(9, "Joel 1:1-3:21; Revelation 1:1-20; Psalm 128:1-6; Proverbs 29:18");
+        target.get("December").put(10, "Amos 1:1-3:15; Revelation 2:1-17; Psalm 129:1-8; Proverbs 29:19-20");
+        target.get("December").put(11, "Amos 4:1-6:14; Revelation 2:18-3:6; Psalm 130:1-8; Proverbs 29:21-22");
+        target.get("December").put(12, "Amos 7:1-9:15; Revelation 3:7-22; Psalm 131:1-3; Proverbs 29:23");
+        target.get("December").put(13, "Obadiah 1:1-21; Revelation 4:1-11; Psalm 132:1-18; Proverbs 29:24-25");
+        target.get("December").put(14, "Jonah 1:1-4:11; Revelation 5:1-14; Psalm 133:1-3; Proverbs 29:26-27");
+        target.get("December").put(15, "Micah 1:1-4:13; Revelation 6:1-17; Psalm 134:1-3; Proverbs 30:1-4");
+        target.get("December").put(16, "Micah 5:1-7:20; Revelation 7:1-17; Psalm 135:1-21; Proverbs 30:5-6");
+        target.get("December").put(17, "Nahum 1:1-3:19; Revelation 8:1-13; Psalm 136:1-26; Proverbs 30:7-9");
+        target.get("December").put(18, "Habakkuk 1:1-3:19; Revelation 9:1-21; Psalm 137:1-9; Proverbs 30:10");
+        target.get("December").put(19, "Zephaniah 1:1-3:20; Revelation 10:1-11; Psalm 138:1-8; Proverbs 30:11-14");
+        target.get("December").put(20, "Haggai 1:1-2:23; Revelation 11:1-19; Psalm 139:1-24; Proverbs 30:15-16");
+        target.get("December").put(21, "Zechariah 1:1-21; Revelation 12:1-17; Psalm 140:1-13; Proverbs 30:17");
+        target.get("December").put(22, "Zechariah 2:1-3:10; Revelation 13:1-13:18; Psalm 141:1-10; Proverbs 30:18-20");
+        target.get("December").put(23, "Zechariah 4:1-5:11; Revelation 14:1-20; Psalm 142:1-7; Proverbs 30:21-23");
+        target.get("December").put(24, "Zechariah 6:1-7:14; Revelation 15:1-8; Psalm 143:1-12; Proverbs 30:24-28");
+        target.get("December").put(25, "Zechariah 8:1-23; Revelation 16:1-21; Psalm 144:1-15; Proverbs 30:29-31");
+        target.get("December").put(26, "Zechariah 9:1-17; Revelation 17:1-18; Psalm 145:1-21; Proverbs 30:32");
+        target.get("December").put(27, "Zechariah 10:1-11:17; Revelation 18:1-24; Psalm 146:1-10; Proverbs 30:33");
+        target.get("December").put(28, "Zechariah 12:1-13:9; Revelation 19:1-21; Psalm 147:1-20; Proverbs 31:1-7");
+        target.get("December").put(29, "Zechariah 14:1-21; Revelation 20:1-15; Psalm 148:1-14; Proverbs 31:8-9");
+        target.get("December").put(30, "Malachi 1:1-2:17; Revelation 21:1-27; Psalm 149:1-9; Proverbs 31:10-24");
+        target.get("December").put(31, "Malachi 3:1-4:6; Revelation 22:1-21; Psalm 150:1-6; Proverbs 31:25-31");
+    }
+
+    private void loadReadingPlanTwoData() {
+        // Loaded from the user-supplied reading-plan PDF.
+        Map<String, Map<Integer, String>> target =
+                readingPlanTwoMonths;
+
+        target.put("January", new LinkedHashMap<>());
+        target.put("February", new LinkedHashMap<>());
+        target.put("March", new LinkedHashMap<>());
+        target.put("April", new LinkedHashMap<>());
+        target.put("May", new LinkedHashMap<>());
+        target.put("June", new LinkedHashMap<>());
+        target.put("July", new LinkedHashMap<>());
+        target.put("August", new LinkedHashMap<>());
+        target.put("September", new LinkedHashMap<>());
+        target.put("October", new LinkedHashMap<>());
+        target.put("November", new LinkedHashMap<>());
+        target.put("December", new LinkedHashMap<>());
+
+        target.get("January").put(1, "Genesis 1:1-3:24");
+        target.get("January").put(2, "Genesis 4:1-5:32; 1 Chronicles 1:1-4; Genesis 6:1-22");
+        target.get("January").put(3, "Genesis 7:1-10:5; 1 Chronicles 1:5-7; Genesis 10:6-20; 1 Chronicles 1:8-16; Genesis 10:21-30; 1 Chronicles 1:17-23; Genesis 10:31-32");
+        target.get("January").put(4, "Genesis 11:1-26; 1 Chronicles 1:24-27; Genesis 11:27-11:31; Genesis 12:1-14:24");
+        target.get("January").put(5, "Genesis 15:1-17:27");
+        target.get("January").put(6, "Genesis 18:1-21:7");
+        target.get("January").put(7, "Genesis 21:8-23:20; Genesis 11:32; Genesis 24:1-67");
+        target.get("January").put(8, "Genesis 25:1-4; 1 Chronicles 1:32-33; Genesis 25:5-6; Genesis 25:12-18; 1 Chronicles 1:28-31; 1 Chronicles 1:34; Genesis 25:19-26; Genesis 25:7-11");
+        target.get("January").put(9, "Genesis 25:27-28:5");
+        target.get("January").put(10, "Genesis 28:6-30:24");
+        target.get("January").put(11, "Genesis 30:25-31:55");
+        target.get("January").put(12, "Genesis 32:1-35:27");
+        target.get("January").put(13, "Genesis 36:1-19; 1 Chronicles 1:35-37; Genesis 36:20-30; 1 Chronicles 1:38-42; Genesis 36:31-43; 1 Chronicles 1:43-2:2");
+        target.get("January").put(14, "Genesis 37:1-38:30; 1 Chronicles 2:3-6; 1 Chronicles 2:8; Genesis 39:1-23");
+        target.get("January").put(15, "Genesis 40:1-23; Genesis 35:28-29; Genesis 41:1-57");
+        target.get("January").put(16, "Genesis 42:1-45:15");
+        target.get("January").put(17, "Genesis 45:16-47:27");
+        target.get("January").put(18, "Genesis 47:28-50:26");
+        target.get("January").put(19, "Job 1:1-4:21");
+        target.get("January").put(20, "Job 5:1-7:21");
+        target.get("January").put(21, "Job 8:1-11:20");
+        target.get("January").put(22, "Job 12:1-14:22");
+        target.get("January").put(23, "Job 15:1-18:21");
+        target.get("January").put(24, "Job 19:1-21:34");
+        target.get("January").put(25, "Job 22:1-25:6");
+        target.get("January").put(26, "Job 26:1-29:25");
+        target.get("January").put(27, "Job 30:1-31:40");
+        target.get("January").put(28, "Job 32:1-34:37");
+        target.get("January").put(29, "Job 35:1-37:24");
+        target.get("January").put(30, "Job 38:1-40:5");
+        target.get("January").put(31, "Job 40:6-42:17");
+        target.get("February").put(1, "Exodus 1:1-2:25; 1 Chronicles 6:1-3; Exodus 3:1-4:17");
+        target.get("February").put(2, "Exodus 4:18-7:13");
+        target.get("February").put(3, "Exodus 7:14-9:35");
+        target.get("February").put(4, "Exodus 10:1-12:51");
+        target.get("February").put(5, "Exodus 13:1-15:27");
+        target.get("February").put(6, "Exodus 16:1-19:25");
+        target.get("February").put(7, "Exodus 20:1-22:15");
+        target.get("February").put(8, "Exodus 22:16-24:18");
+        target.get("February").put(9, "Exodus 25:1-28:43");
+        target.get("February").put(10, "Exodus 29:1-31:18");
+        target.get("February").put(11, "Exodus 32:1-34:35");
+        target.get("February").put(12, "Exodus 35:1-36:38");
+        target.get("February").put(13, "Exodus 37:1-39:31");
+        target.get("February").put(14, "Exodus 39:32-40:38; Numbers 9:15-23");
+        target.get("February").put(15, "Numbers 7:1-89");
+        target.get("February").put(16, "Numbers 8:1-9:14; Leviticus 1:1-3:17");
+        target.get("February").put(17, "Leviticus 4:1-6:30");
+        target.get("February").put(18, "Leviticus 7:1-8:36");
+        target.get("February").put(19, "Leviticus 9:1-11:47");
+        target.get("February").put(20, "Leviticus 12:1-14:32");
+        target.get("February").put(21, "Leviticus 14:33-16:34");
+        target.get("February").put(22, "Leviticus 17:1-19:37");
+        target.get("February").put(23, "Leviticus 20:1-22:33");
+        target.get("February").put(24, "Leviticus 23:1-25:23");
+        target.get("February").put(25, "Leviticus 25:24-26:46");
+        target.get("February").put(26, "Leviticus 27:1-34; Numbers 1:1-54");
+        target.get("February").put(27, "Numbers 2:1-3:51");
+        target.get("February").put(28, "Numbers 4:1-5:31");
+        target.get("March").put(1, "Numbers 6:1-27; Numbers 10:1-36");
+        target.get("March").put(2, "Numbers 11:1-13:33");
+        target.get("March").put(3, "Numbers 14:1-15:41");
+        target.get("March").put(4, "Numbers 16:1-18:32");
+        target.get("March").put(5, "Numbers 19:1-21:35");
+        target.get("March").put(6, "Numbers 22:1-24:25");
+        target.get("March").put(7, "Numbers 25:1-26:65");
+        target.get("March").put(8, "Numbers 27:1-29:40");
+        target.get("March").put(9, "Numbers 30:1-31:54");
+        target.get("March").put(10, "Numbers 32:1-33:56");
+        target.get("March").put(11, "Numbers 34:1-36:13");
+        target.get("March").put(12, "Deuteronomy 1:1-3:20");
+        target.get("March").put(13, "Deuteronomy 3:21-5:33");
+        target.get("March").put(14, "Deuteronomy 6:1-9:29");
+        target.get("March").put(15, "Deuteronomy 10:1-12:32");
+        target.get("March").put(16, "Deuteronomy 13:1-16:17");
+        target.get("March").put(17, "Deuteronomy 16:18-21:9");
+        target.get("March").put(18, "Deuteronomy 21:10-25:19");
+        target.get("March").put(19, "Deuteronomy 26:1-29:1");
+        target.get("March").put(20, "Deuteronomy 29:2-31:29");
+        target.get("March").put(21, "Deuteronomy 31:30-32:52; Psalms 90");
+        target.get("March").put(22, "Deuteronomy 33:1-34:12; Joshua 1:1-2:24");
+        target.get("March").put(23, "Joshua 3:1-6:27");
+        target.get("March").put(24, "Joshua 7:1; 1 Chronicles 2:7; Joshua 7:2-9:27");
+        target.get("March").put(25, "Joshua 10:1-12:6");
+        target.get("March").put(26, "Joshua 12:7-15:19");
+        target.get("March").put(27, "Joshua 15:20-17:18");
+        target.get("March").put(28, "Joshua 18:1-19:48");
+        target.get("March").put(29, "Joshua 19:49-21:45; 1 Chronicles 6:54-81");
+        target.get("March").put(30, "Joshua 22:1-24:33");
+        target.get("March").put(31, "Judges 1:1-3:30");
+        target.get("April").put(1, "Judges 3:31-6:40");
+        target.get("April").put(2, "Judges 7:1-9:21");
+        target.get("April").put(3, "Judges 9:22-11:28");
+        target.get("April").put(4, "Judges 11:29-15:20");
+        target.get("April").put(5, "Judges 16:1-18:31");
+        target.get("April").put(6, "Judges 19:1-21:25");
+        target.get("April").put(7, "Ruth 1:1-4:12");
+        target.get("April").put(8, "Ruth 4:13-22; 1 Chronicles 2:9-55; 1 Chronicles 4:1-23; 1 Samuel 1:1-8");
+        target.get("April").put(9, "1 Samuel 1:9-4:11");
+        target.get("April").put(10, "1 Samuel 4:12-8:22");
+        target.get("April").put(11, "1 Samuel 9:1-12:25");
+        target.get("April").put(12, "1 Chronicles 9:35-39; 1 Samuel 13:1-5; 1 Samuel 13:19-23; 1 Samuel 13:6-18; 1 Samuel 14:1-52");
+        target.get("April").put(13, "1 Samuel 15:1-17:31");
+        target.get("April").put(14, "1 Samuel 17:32-19:17; Psalms 59; 1 Samuel 19:18-24");
+        target.get("April").put(15, "1 Samuel 20:1-21:15; Psalms 34");
+        target.get("April").put(16, "1 Samuel 22:1-2; Psalms 57; Psalms 142; 1 Chronicles 12:8-18; 1 Samuel 22:3-23; Psalms 52; 1 Samuel 23:1-12");
+        target.get("April").put(17, "1 Samuel 23:13-29; Psalms 54; 1 Samuel 24:1-25:44");
+        target.get("April").put(18, "1 Samuel 26:1-27:7; 1 Chronicles 12:1-7; 1 Samuel 27:8-29:11; 1 Chronicles 12:19; Psalms 56");
+        target.get("April").put(19, "1 Samuel 30:1-31; 1 Chronicles 12:20-22; 1 Samuel 31:1-13; 1 Chronicles 10:1-14; 1 Chronicles 9:40-44; 2 Samuel 4:4; 2 Samuel 1:1-27");
+        target.get("April").put(20, "2 Samuel 2:1-3:5; 1 Chronicles 3:1-4; 2 Samuel 23:8-17; 1 Chronicles 11:10-19; 2 Samuel 23:18-39; 1 Chronicles 11:20-47");
+        target.get("April").put(21, "2 Samuel 3:6-4:12");
+        target.get("April").put(22, "2 Samuel 5:1-3; 1 Chronicles 11:1-3; 1 Chronicles 12:23-40; 2 Samuel 5:17-25; 1 Chronicles 14:8-17; 2 Samuel 5:6-10; 1 Chronicles 11:4-9; 1 Chronicles 3:4; 2 Samuel 5:13; 2 Samuel 5:4-5; 2 Samuel 5:11-12; 1 Chronicles 14:1-2; 1 Chronicles 13:1-5; 2 Samuel 6:1-11; 1 Chronicles 13:6-14");
+        target.get("April").put(23, "2 Samuel 6:12; 1 Chronicles 15:1-28; 2 Samuel 6:12-16; 1 Chronicles 15:29; 2 Samuel 6:17-19; 1 Chronicles 16:1-43; 2 Samuel 6:19-23");
+        target.get("April").put(24, "2 Samuel 7:1-17; 1 Chronicles 17:1-15; 2 Samuel 7:18-29; 1 Chronicles 17:16-27; 2 Samuel 8:1-14; 1 Chronicles 18:1-13; Psalms 60");
+        target.get("April").put(25, "2 Samuel 8:15-18; 1 Chronicles 18:14-17; 1 Chronicles 6:16-30; 1 Chronicles 6:50-53; 1 Chronicles 6:31-48; 2 Samuel 9:1-10:19; 1 Chronicles 19:1-19");
+        target.get("April").put(26, "1 Chronicles 20:1; 2 Samuel 11:1-12:14; Psalms 51; 2 Samuel 12:15-25; 2 Samuel 5:14-16; 1 Chronicles 14:3-7; 1 Chronicles 3:5-9");
+        target.get("April").put(27, "2 Samuel 12:26-31; 1 Chronicles 20:2-3; 2 Samuel 13:1-14:33");
+        target.get("April").put(28, "2 Samuel 15:1-17:14");
+        target.get("April").put(29, "2 Samuel 17:15-29; Psalms 3; Psalms 63; 2 Samuel 18:1-19:30");
+        target.get("April").put(30, "2 Samuel 19:31-20:26; Psalms 7; 2 Samuel 21:1-22; 1 Chronicles 20:4-8");
+        target.get("May").put(1, "2 Samuel 22:1-51; Psalms 18");
+        target.get("May").put(2, "2 Samuel 24:1-9; 1 Chronicles 21:1-6; 2 Samuel 24:10-17; 1 Chronicles 21:7-17; 2 Samuel 24:18-25; 1 Chronicles 21:18-22:19");
+        target.get("May").put(3, "1 Chronicles 23:1-25:31");
+        target.get("May").put(4, "1 Chronicles 26:1-28:21");
+        target.get("May").put(5, "1 Chronicles 29:1-22; 1 Kings 1:1-53");
+        target.get("May").put(6, "1 Kings 2:1-9; 2 Samuel 23:1-7; 1 Kings 2:10-12; 1 Chronicles 29:26-30; Psalms 4-6; Psalms 8-9; Psalms 11");
+        target.get("May").put(7, "Psalms 12-17; Psalms 19-21");
+        target.get("May").put(8, "Psalms 22-26");
+        target.get("May").put(9, "Psalms 27-32");
+        target.get("May").put(10, "Psalms 35-38");
+        target.get("May").put(11, "Psalms 39-41; Psalms 53; Psalms 55; Psalms 58");
+        target.get("May").put(12, "Psalms 61-62; Psalms 64-67");
+        target.get("May").put(13, "Psalms 68-70; Psalms 86; Psalms 101");
+        target.get("May").put(14, "Psalms 103; Psalms 108-110; Psalms 122; Psalms 124");
+        target.get("May").put(15, "Psalms 131; Psalms 133; Psalms 138-141; Psalms 143");
+        target.get("May").put(16, "Psalms 144-145; Psalms 88-89");
+        target.get("May").put(17, "Psalms 50; Psalms 73-74");
+        target.get("May").put(18, "Psalms 75-78");
+        target.get("May").put(19, "Psalms 79-82");
+        target.get("May").put(20, "Psalms 83; 1 Chronicles 29:23-25; 2 Chronicles 1:1; 1 Kings 2:13-3:4; 2 Chronicles 1:2-6; 1 Kings 3:5-15; 2 Chronicles 1:7-13");
+        target.get("May").put(21, "1 Kings 3:16-28; 1 Kings 5:1-18; 2 Chronicles 2:1-18; 1 Kings 6:1-13; 2 Chronicles 3:1-14; 1 Kings 6:14-38");
+        target.get("May").put(22, "1 Kings 7:1-51; 2 Chronicles 3:15-4:22");
+        target.get("May").put(23, "1 Kings 8:1-11; 2 Chronicles 5:1-14; 1 Kings 8:12-21; 2 Chronicles 6:1-11; 1 Kings 8:22-53; 2 Chronicles 6:12-42");
+        target.get("May").put(24, "1 Kings 8:54-66; 2 Chronicles 7:1-10; 1 Kings 9:1-9; 2 Chronicles 7:11-22; 1 Kings 9:10-14");
+        target.get("May").put(25, "2 Chronicles 8:1-18; 1 Kings 9:15-10:13; 2 Chronicles 9:1-12; 1 Kings 10:14-29; 2 Chronicles 9:13-28; 2 Chronicles 1:14-17");
+        target.get("May").put(26, "1 Kings 4:1-34; Psalms 72; Psalms 127");
+        target.get("May").put(27, "Proverbs 1:1-4:27");
+        target.get("May").put(28, "Proverbs 5:1-7:27");
+        target.get("May").put(29, "Proverbs 8:1-10:32");
+        target.get("May").put(30, "Proverbs 11:1-13:25");
+        target.get("May").put(31, "Proverbs 14:1-16:33");
+        target.get("June").put(1, "Proverbs 17:1-19:29");
+        target.get("June").put(2, "Proverbs 20:1-22:16");
+        target.get("June").put(3, "Proverbs 22:17-24:34");
+        target.get("June").put(4, "Song of Solomon 1:1-8:14");
+        target.get("June").put(5, "1 Kings 11:1-43; 2 Chronicles 9:29-31; Ecclesiastes 1:1-11");
+        target.get("June").put(6, "Ecclesiastes 1:12-6:12");
+        target.get("June").put(7, "Ecclesiastes 7:1-11:6");
+        target.get("June").put(8, "Ecclesiastes 11:7-12:14; 1 Kings 12:1-20; 2 Chronicles 10:1-19; 1 Kings 12:21-24; 2 Chronicles 11:1-4; 1 Kings 12:25-33; 2 Chronicles 11:5-17");
+        target.get("June").put(9, "1 Kings 13:1-14:18; 1 Kings 14:21-14:24; 2 Chronicles 12:13-14; 2 Chronicles 11:18-23; 2 Chronicles 12:1-12; 1 Kings 14:25-28; 2 Chronicles 12:15-16; 1 Kings 14:29-15:5; 2 Chronicles 13:1-22; 1 Kings 15:6-8; 2 Chronicles 14:1-8; 1 Kings 15:9-15; 1 Kings 14:19-20; 1 Kings 15:25-34; 2 Chronicles 14:9-15; 2 Chronicles 15:1-19");
+        target.get("June").put(10, "1 Kings 15:16-22; 2 Chronicles 16:1-10; 1 Kings 16:1-34; 1 Kings 15:23-24; 2 Chronicles 16:11-17:19; 1 Kings 17:1-7");
+        target.get("June").put(11, "1 Kings 17:8-20:22");
+        target.get("June").put(12, "1 Kings 20:23-22:9; 2 Chronicles 18:1-8");
+        target.get("June").put(13, "1 Kings 22:10-28; 2 Chronicles 18:9-27; 1 Kings 22:29-35; 2 Chronicles 18:28-34; 1 Kings 22:36-40; 1 Kings 22:51-53; 2 Chronicles 19:1-20:30");
+        target.get("June").put(14, "2 Kings 1:1-18; 2 Kings 3:1-27; 1 Kings 22:41-49; 2 Chronicles 20:31-37; 1 Kings 22:50; 2 Chronicles 21:1-4; 2 Kings 8:16-22; 2 Chronicles 21:5-7");
+        target.get("June").put(15, "2 Kings 2:1-25; 2 Kings 4:1-44");
+        target.get("June").put(16, "2 Kings 5:1-8:15");
+        target.get("June").put(17, "2 Chronicles 21:8-20; 2 Kings 8:23-29; 2 Chronicles 22:1-7; 2 Kings 9:1-10:17; 2 Chronicles 22:8-9; 2 Kings 10:18-31");
+        target.get("June").put(18, "2 Kings 11:1-3; 2 Chronicles 22:10-12; 2 Kings 11:4-12; 2 Chronicles 23:1-11; 2 Kings 11:13-16; 2 Chronicles 23:12-15; 2 Kings 11:17-21; 2 Chronicles 23:16-21; 2 Kings 12:1-16; 2 Chronicles 24:1-22; 2 Kings 10:32-36");
+        target.get("June").put(19, "2 Kings 13:1-11; 2 Kings 12:17-21; 2 Chronicles 24:23-27; 2 Kings 13:14-25");
+        target.get("June").put(20, "2 Kings 14:1-14; 2 Chronicles 25:1-24; 2 Kings 13:12-13; 2 Kings 14:15-16; 2 Kings 14:23-27; 2 Chronicles 25:25-28; 2 Kings 14:17-22; 2 Kings 15:1-15; 2 Chronicles 26:1-21; Jonah 1:1-4:11");
+        target.get("June").put(21, "Amos 1:1-6:14");
+        target.get("June").put(22, "Amos 7:1-9:15; 2 Kings 14:28-29; 2 Kings 15:8-29; 2 Kings 15:6-7; 2 Chronicles 26:22-23; Isaiah 6:1-13");
+        target.get("June").put(23, "2 Kings 15:32-38; 2 Chronicles 27:1-9; Micah 1:1-16; 2 Kings 16:1-9; 2 Chronicles 28:1-15; Isaiah 7:1-25");
+        target.get("June").put(24, "Isaiah 8:1-11:16");
+        target.get("June").put(25, "Isaiah 12:1-6; Isaiah 17:1-14; 2 Chronicles 28:16-21; 2 Kings 16:10-18; 2 Chronicles 28:22-25; 2 Kings 18:1-8; 2 Chronicles 29:1-2; 2 Kings 15:30-31; 2 Kings 17:1-4; Hosea 1:1-2:13");
+        target.get("June").put(26, "Hosea 2:14-8:14");
+        target.get("June").put(27, "Hosea 9:1-14:9");
+        target.get("June").put(28, "Isaiah 28:1-29; 2 Kings 17:5; 2 Kings 18:9-12; 2 Kings 17:6-41; Isaiah 1:1-20");
+        target.get("June").put(29, "Isaiah 1:21-5:30");
+        target.get("June").put(30, "2 Kings 16:19-20; 2 Chronicles 28:26-27; Isaiah 13:1-16:14");
+        target.get("July").put(1, "2 Chronicles 29:3-31:21");
+        target.get("July").put(2, "Proverbs 25:1-29:27");
+        target.get("July").put(3, "Proverbs 30:1-31:31");
+        target.get("July").put(4, "Psalms 42; Psalms 43; Psalms 44; Psalms 45; Psalms 46");
+        target.get("July").put(5, "Psalms 47; Psalms 48; Psalms 49; Psalms 84; Psalms 85; Psalms 87");
+        target.get("July").put(6, "Psalms 1-2; Psalms 10; Psalms 33; Psalms 71; Psalms 91");
+        target.get("July").put(7, "Psalms 92; Psalms 93; Psalms 94; Psalms 95; Psalms 96; Psalms 97");
+        target.get("July").put(8, "Psalms 98; Psalms 99; Psalms 100; Psalms 102; Psalms 104");
+        target.get("July").put(9, "Psalms 105; Psalms 106");
+        target.get("July").put(10, "Psalms 107; Psalms 111; Psalms 112; Psalms 113; Psalms 114");
+        target.get("July").put(11, "Psalms 115; Psalms 116; Psalms 117; Psalms 118");
+        target.get("July").put(12, "Psalms 119");
+        target.get("July").put(13, "Psalms 120; Psalms 121; Psalms 123; Psalms 125; Psalms 126");
+        target.get("July").put(14, "Psalms 128; Psalms 129; Psalms 130; Psalms 132; Psalms 134; Psalms 135");
+        target.get("July").put(15, "Psalms 136; Psalms 146; Psalms 147; Psalms 148; Psalms 149; Psalms 150");
+        target.get("July").put(16, "Isaiah 18:1-23:18");
+        target.get("July").put(17, "Isaiah 24:1-27:13; Isaiah 29:1-24");
+        target.get("July").put(18, "Isaiah 30:1-33:24");
+        target.get("July").put(19, "Isaiah 34:1-35:10; Micah 2:1-5:15");
+        target.get("July").put(20, "Micah 6:1-7:20; 2 Chronicles 32:1-8; 2 Kings 18:13-18; Isaiah 36:1-3; 2 Kings 18:19-37; Isaiah 36:4-22");
+        target.get("July").put(21, "2 Kings 19:1-19; Isaiah 37:1-20; 2 Chronicles 32:9-19; 2 Kings 19:20-37; Isaiah 37:21-38; 2 Chronicles 32:20-23");
+        target.get("July").put(22, "2 Kings 20:1-11; Isaiah 38:1-8; 2 Chronicles 32:24:31; Isaiah 38:9-22; 2 Kings 20:12-19; Isaiah 39:1-8");
+        target.get("July").put(23, "Isaiah 40:1-44:5");
+        target.get("July").put(24, "Isaiah 44:6-48:11");
+        target.get("July").put(25, "Isaiah 48:12-52:12");
+        target.get("July").put(26, "Isaiah 52:13-57:21");
+        target.get("July").put(27, "Isaiah 58:1-63:14");
+        target.get("July").put(28, "Isaiah 63:15-66:24; 2 Kings 20:20-21; 2 Chronicles 32:32-33");
+        target.get("July").put(29, "2 Kings 21:1-9; 2 Chronicles 33:1-9; 2 Kings 21:10-17; 2 Chronicles 33:10-19; 2 Kings 21:18; 2 Chronicles 33:20; 2 Kings 21:19-26; 2 Chronicles 33:21-25; 2 Kings 22:1-2; 2 Chronicles 34:1-7; Jeremiah 1:1-2:22");
+        target.get("July").put(30, "Jeremiah 2:23-5:19");
+        target.get("July").put(31, "Jeremiah 5:20-6:30; 2 Kings 22:3-20; 2 Chronicles 34:8-28");
+        target.get("August").put(1, "2 Kings 23:1-20; 2 Chronicles 34:29-33; 2 Kings 23:21-28; 2 Chronicles 35:1-19; Nahum 1:1-3:19");
+        target.get("August").put(2, "Habakkuk 1:1-3:19; Zephaniah 1:1-2:7");
+        target.get("August").put(3, "Zephaniah 2:8-3:20; 2 Chronicles 35:20-27; 2 Kings 23:29-30; Jeremiah 47:1-48:47");
+        target.get("August").put(4, "2 Chronicles 36:1-4; 2 Kings 23:31-37; 2 Chronicles 36:5; Jeremiah 22:1-23; Jeremiah 26:1-24; 2 Kings 24:1-4; Jeremiah 25:1-14");
+        target.get("August").put(5, "Jeremiah 25:15-38; Jeremiah 36:1-32; Jeremiah 45:1-46:28");
+        target.get("August").put(6, "Jeremiah 19:1-20:18; Daniel 1:1-21");
+        target.get("August").put(7, "Daniel 2:1-3:30; Jeremiah 7:1-8:3");
+        target.get("August").put(8, "Jeremiah 8:4-11:23");
+        target.get("August").put(9, "Jeremiah 12:1-15:21");
+        target.get("August").put(10, "Jeremiah 16:1-18:23; Jeremiah 35:1-19");
+        target.get("August").put(11, "Jeremiah 49:1-33; 2 Kings 24:5-7; 2 Chronicles 36:6-8; 2 Kings 24:8-9; 2 Chronicles 36:9; Jeremiah 22:24-23:32");
+        target.get("August").put(12, "Jeremiah 23:33-24:10; Jeremiah 29:1-31:14");
+        target.get("August").put(13, "Jeremiah 31:15-40; Jeremiah 49:34-51:14");
+        target.get("August").put(14, "Jeremiah 51:15-58; 2 Chronicles 36:10; 2 Kings 24:10-17; 1 Chronicles 3:10-16; 2 Chronicles 36:11-14; Jeremiah 52:1-3; 2 Kings 24:18-20; Jeremiah 37:1-10");
+        target.get("August").put(15, "Jeremiah 37:11-38:28; Ezekiel 1:1-3:15");
+        target.get("August").put(16, "Ezekiel 3:16-4:17; Jeremiah 27:1-28:17; Jeremiah 51:59-64");
+        target.get("August").put(17, "Ezekiel 5:1-9:11");
+        target.get("August").put(18, "Ezekiel 10:1-13:23");
+        target.get("August").put(19, "Ezekiel 14:1-16:63");
+        target.get("August").put(20, "Ezekiel 17:1-19:14");
+        target.get("August").put(21, "Ezekiel 20:1-22:16");
+        target.get("August").put(22, "Ezekiel 22:17-23:49; 2 Kings 24:20-25:2; Jeremiah 52:3-5; Jeremiah 39:1; Ezekiel 24:1-14");
+        target.get("August").put(23, "Ezekiel 24:15-25:17; Jeremiah 34:1-22; Jeremiah 21:1-14; Ezekiel 29:1-16; Ezekiel 30:20-31:18");
+        target.get("August").put(24, "Jeremiah 32:1-33:26; Ezekiel 26:1-14");
+        target.get("August").put(25, "Ezekiel 26:15-28:26; 2 Kings 25:3-7; Jeremiah 52:6-11; Jeremiah 39:2-10");
+        target.get("August").put(26, "Jeremiah 39:11-18; Jeremiah 40:1-6; 2 Kings 25:8-21; Jeremiah 52:12-27; 2 Chronicles 36:15-21; Lamentations 1:1-22");
+        target.get("August").put(27, "Lamentations 2:1-4:22");
+        target.get("August").put(28, "Lamentations 5:1-22; Obadiah 1:1-21; 2 Kings 25:22-26; Jeremiah 40:7-41:18");
+        target.get("August").put(29, "Jeremiah 42:1-44:30; Ezekiel 33:21-33");
+        target.get("August").put(30, "Ezekiel 34:1-36:38");
+        target.get("August").put(31, "Ezekiel 37:1-39:29; Ezekiel 32:1-16");
+        target.get("September").put(1, "Ezekiel 32:17-33:20; Jeremiah 52:28-30; Psalms 137:1-9; 1 Chronicles 4:24-5:17");
+        target.get("September").put(2, "1 Chronicles 5:18-26; 1 Chronicles 6:3; 1 Chronicles 6:49; 1 Chronicles 6:4-15; 1 Chronicles 7:1-8:28");
+        target.get("September").put(3, "1 Chronicles 8:29-9:1; Daniel 4:1-37; Ezekiel 40:1-37");
+        target.get("September").put(4, "Ezekiel 40:38-43:27");
+        target.get("September").put(5, "Ezekiel 44:1-46:24");
+        target.get("September").put(6, "Ezekiel 47:1-48:35; Ezekiel 29:17-30:19; 2 Kings 25:27-30; Jeremiah 52:31-34");
+        target.get("September").put(7, "Daniel 7:1-8:27; Daniel 5:1-31");
+        target.get("September").put(8, "Daniel 6:1-28; Daniel 9:1-27; 2 Chronicles 36:22-23; Ezra 1:1-11; 1 Chronicles 3:17-19");
+        target.get("September").put(9, "Ezra 2:1-4:5; 1 Chronicles 3:19-24");
+        target.get("September").put(10, "Daniel 10:1-12:13; Ezra 4:24-5:1; Haggai 1:1-15");
+        target.get("September").put(11, "Haggai 2:1-9; Zechariah 1:1-6; Haggai 2:10-19; Ezra 5:2; Haggai 2:20-23; Zechariah 1:7-5:11");
+        target.get("September").put(12, "Zechariah 6:1-15; Ezra 5:3-6:14; Zechariah 7:1-8:23");
+        target.get("September").put(13, "Zechariah 9:1-14:21");
+        target.get("September").put(14, "Ezra 6:14-22; Ezra 4:6; Esther 1:1-4:17");
+        target.get("September").put(15, "Esther 5:1-10:3");
+        target.get("September").put(16, "Ezra 4:7-23; Ezra 7:1-8:36");
+        target.get("September").put(17, "Ezra 9:1-10:44; Nehemiah 1:1-2:20");
+        target.get("September").put(18, "Nehemiah 3:1-5:13; Nehemiah 6:1-7:3");
+        target.get("September").put(19, "Nehemiah 7:4-8:12");
+        target.get("September").put(20, "Nehemiah 8:13-10:39");
+        target.get("September").put(21, "Nehemiah 11:1-12:26; 1 Chronicles 9:1-34");
+        target.get("September").put(22, "Nehemiah 12:27-13:6; Nehemiah 5:14-19; Nehemiah 13:7-31; Malachi 1:1-2:9");
+        target.get("September").put(23, "Malachi 2:10-4:6; Joel 1:1-3:21");
+        target.get("September").put(24, "Mark 1:1; Luke 1:1-4; John 1:1-18; Matthew 1:1-17; Luke 3:23-38; Luke 1:5-38");
+        target.get("September").put(25, "Luke 1:39-80; Matthew 1:18-25; Luke 2:1-40");
+        target.get("September").put(26, "Matthew 2:1-23; Luke 2:41-52; Mark 1:2-8; Matthew 3:1-12; Luke 3:1-18; Mark 1:9-11; Matthew 3:13-17; Luke 3:21-22");
+        target.get("September").put(27, "Mark 1:12-13; Matthew 4:1-11; Luke 4:1-15; John 1:19-2:25");
+        target.get("September").put(28, "John 3:1-4:45; Luke 3:19-20");
+        target.get("September").put(29, "Mark 1:14-15; Matthew 4:12-17; Luke 3:23; John 4:46-54; Luke 4:16-30; Mark 1:16-20; Matthew 4:18-22; Mark 1:21-28; Luke 4:31-37; Mark 1:29-34; Matthew 8:14-17; Luke 4:38-41; Mark 1:35-39; Luke 4:42-44; Matthew 4:23-25");
+        target.get("September").put(30, "Luke 5:1-11; Mark 1:40-45; Matthew 8:1-4; Luke 5:12-16; Mark 2:1-12; Matthew 9:1-8; Luke 5:17-26; Mark 2:13-17; Matthew 9:9-13; Luke 5:27-32; Mark 2:18-22; Matthew 9:14-17; Luke 5:33-39");
+        target.get("October").put(1, "John 5:1-47; Mark 2:23-28; Matthew 12:1-8; Luke 6:1-5; Mark 3:1-6; Matthew 12:9-14; Luke 6:6-11; Matthew 12:15-21");
+        target.get("October").put(2, "Mark 3:7-19; Luke 6:12-16; Matthew 5:1-12; Luke 6:17-26; Matthew 5:13-48; Luke 6:27-36; Matthew 6:1-4");
+        target.get("October").put(3, "Matthew 6:5-7:6; Luke 6:37-42; Matthew 7:7-20; Luke 6:43-45; Matthew 7:21-29; Luke 6:46-49");
+        target.get("October").put(4, "Matthew 8:5-13; Luke 7:1-17; Matthew 11:1-19; Luke 7:18-35; Matthew 11:20-30; Luke 7:36-50");
+        target.get("October").put(5, "Luke 8:1-3; Mark 3:20-30; Matthew 12:22-45; Mark 3:31-35; Matthew 12:46-50; Luke 8:19-21; Mark 4:1-9; Matthew 13:1-9; Luke 8:4-8; Mark 4:10-20");
+        target.get("October").put(6, "Matthew 13:10-23; Luke 8:9-18; Mark 4:21-29; Matthew 13:24-30; Mark 4:30-34; Matthew 13:31-52; Mark 4:35-41; Matthew 8:23-27; Luke 8:22-25");
+        target.get("October").put(7, "Mark 5:1-20; Matthew 8:28-34; Luke 8:26-39; Mark 5:21-43; Matthew 9:18-26; Luke 8:40-56");
+        target.get("October").put(8, "Matthew 9:27-34; Mark 6:1-6; Matthew 13:53-58; Matthew 9:35-38; Mark 6:7-13; Matthew 10:1-42; Luke 9:1-6");
+        target.get("October").put(9, "Luke 9:7-9; Mark 6:14-29; Matthew 14:1-21; Mark 6:30-44; Luke 9:10-17; John 6:1-15; Mark 6:45-52; Matthew 14:22-33; John 6:16-21; Mark 6:53-56; Matthew 14:34-36");
+        target.get("October").put(10, "John 6:22-71; Mark 7:1-23; Matthew 15:1-20");
+        target.get("October").put(11, "Mark 7:24-30; Matthew 15:21-28; Mark 7:31-37; Matthew 15:29-31; Mark 8:1-10; Matthew 15:32-16:4; Mark 8:11-21; Matthew 16:5-12");
+        target.get("October").put(12, "Mark 8:22-30; Matthew 16:13-20; Luke 9:18-20; Mark 8:31-9:1; Matthew 16:21-28; Luke 9:21-27; Mark 9:2-13; Matthew 17:1-13; Luke 9:28-36");
+        target.get("October").put(13, "Mark 9:14-29; Matthew 17:14-21; Luke 9:37-43; Mark 9:30-32; Matthew 17:22-23; Luke 9:43-45; Matthew 17:24-27; Mark 9:33-37; Matthew 18:1-6; Luke 9:46-48; Mark 9:38-41; Luke 9:49-50; Mark 9:42-50; Matthew 18:7-35");
+        target.get("October").put(14, "John 7:1-9; Luke 9:51-56; Matthew 8:18-22; Luke 9:57-62; John 7:10-8:20");
+        target.get("October").put(15, "John 8:21-59; Luke 10:1-11:13");
+        target.get("October").put(16, "Luke 11:14-12:34");
+        target.get("October").put(17, "Luke 12:35-13:21; John 9:1-41");
+        target.get("October").put(18, "John 10:1-42; Luke 13:22-14:24");
+        target.get("October").put(19, "Luke 14:25-17:10; John 11:1-37");
+        target.get("October").put(20, "John 11:38-57; Luke 17:11-18:8");
+        target.get("October").put(21, "Luke 18:9-14; Mark 10:1-12; Matthew 19:1-12; Mark 10:13-16; Matthew 19:13-15; Luke 18:15-17; Mark 10:17-31; Matthew 19:16-30; Luke 18:18-30");
+        target.get("October").put(22, "Matthew 20:1-16; Mark 10:32-34; Matthew 20:17-19; Luke 18:31-34; Mark 10:35-45; Matthew 20:20-34; Mark 10:46-52; Luke 18:35-19:27");
+        target.get("October").put(23, "Mark 14:3-9; Matthew 26:6-13; John 12:1-11; Mark 11:1-11; Matthew 21:1-11; Luke 19:28-40; John 12:12-19; Luke 19:41-44; John 12:20-36");
+        target.get("October").put(24, "John 12:37-50; Mark 11:12-14; Matthew 21:18-22; Mark 11:15-19; Matthew 21:12-17; Luke 19:45-48; Mark 11:20-33; Matthew 21:23-27; Luke 20:1-8");
+        target.get("October").put(25, "Matthew 21:28-32; Mark 12:1-12; Matthew 21:33-46; Luke 20:9-19; Matthew 22:1-14; Mark 12:13-17; Matthew 22:15-22; Luke 20:20-26; Mark 12:18-27; Matthew 22:23-33; Luke 20:27-40");
+        target.get("October").put(26, "Mark 12:28-34; Matthew 22:34-40; Mark 12:35-37; Matthew 22:41-46; Luke 20:41-44; Mark 12:38-40; Matthew 23:1-12; Luke 20:45-47; Matthew 23:13-39; Mark 12:41-44; Luke 21:1-4");
+        target.get("October").put(27, "Mark 13:1-23; Matthew 24:1-25; Luke 21:5-24; Mark 13:24-31; Matthew 24:26-35; Luke 21:25-33");
+        target.get("October").put(28, "Mark 13:32-37; Matthew 24:36-51; Luke 21:34-38; Matthew 25:1-46");
+        target.get("October").put(29, "Mark 14:1-2; Matthew 26:1-5; Luke 22:1-2; Mark 14:10-11; Matthew 26:14-16; Luke 22:3-6; Mark 14:12-16; Matthew 26:17-19; Luke 22:7-13; John 13:1-20; Mark 14:17-26; Matthew 26:20-30; Luke 22:14-30; John 13:18-30");
+        target.get("October").put(30, "John 13:31-38; Mark 14:27-31; Matthew 26:31-35; Luke 22:31-38; John 14:1-15:17");
+        target.get("October").put(31, "John 15:18-17:26");
+        target.get("November").put(1, "John 18:1-2; Mark 14:32-42; Matthew 26:36-46; Luke 22:39-46; Mark 14:43-52; Matthew 26:47-56; Luke 22:47-53; John 18:3-24");
+        target.get("November").put(2, "Mark 14:53-65; Matthew 26:57-68; Mark 14:66-72; Matthew 26:69-75; Luke 22:54-65; John 18:25-27; Mark 15:1; Matthew 27:1-2; Luke 22:66-71; Matthew 27:3-10");
+        target.get("November").put(3, "Mark 15:2-5; Matthew 27:11-14; Luke 23:1-12; John 18:28-40; Mark 15:6-15; Matthew 27:15-26; Luke 23:13-25; John 19:1-16; Mark 15:16-20; Matthew 27:27-31");
+        target.get("November").put(4, "Mark 15:21-24; Matthew 27:32-34; Luke 23:26-31; John 19:17; Mark 15:25-32; Matthew 27:35-44; Luke 23:32-43; John 19:18-27; Mark 15:33-41; Matthew 27:45-56; Luke 23:44-49; John 19:28-37");
+        target.get("November").put(5, "Mark 15:42-47; Matthew 27:57-61; Luke 23:50-56; John 19:38-42; Matthew 27:62-66; Mark 16:1-8; Matthew 28:1-7; Luke 24:1-12; Mark 16:9-11; John 20:1-18; Matthew 28:8-15");
+        target.get("November").put(6, "Luke 24:13-43; Mark 16:12-13; John 20:19-23; Mark 16:14; John 20:24-21:25; Matthew 28:16-20; Mark 16:15-18; Luke 24:44-49");
+        target.get("November").put(7, "Mark 16:19-20; Luke 24:50-53; Acts 1:1-2:47");
+        target.get("November").put(8, "Acts 3:1-5:42");
+        target.get("November").put(9, "Acts 6:1-8:1");
+        target.get("November").put(10, "Acts 8:1-9:43");
+        target.get("November").put(11, "Acts 10:1-12:5");
+        target.get("November").put(12, "Acts 12:6-14:20");
+        target.get("November").put(13, "Acts 14:21-28; Galatians 1:1-3:23");
+        target.get("November").put(14, "Galations 3:24-6:18; Acts 15:1-21");
+        target.get("November").put(15, "Acts 15:22-17:15");
+        target.get("November").put(16, "Acts 17:16-18:3; 1 Thessalonians 1:1-5:11");
+        target.get("November").put(17, "1 Thessalonians 5:12-28; 2 Thessalonians 1:1-3:18; Acts 18:4-23");
+        target.get("November").put(18, "Acts 18:24-19:20; 1 Corinthians 1:1-3:23");
+        target.get("November").put(19, "1 Corinthians 4:1-7:40");
+        target.get("November").put(20, "1 Corinthians 8:1-11:1");
+        target.get("November").put(21, "1 Corinthians 11:2-13:13");
+        target.get("November").put(22, "1 Corinthians 14:1-15:58");
+        target.get("November").put(23, "1 Corinthians 16:1-24; Acts 19:21-20:6; Romans 1:1-32");
+        target.get("November").put(24, "Romans 2:1-4:25");
+        target.get("November").put(25, "Romans 5:1-8:17");
+        target.get("November").put(26, "Romans 8:18-10:21");
+        target.get("November").put(27, "Romans 11:1-14:23");
+        target.get("November").put(28, "Romans 15:1-16:27; 2 Corinthians 1:1-2:4");
+        target.get("November").put(29, "2 Corinthians2:5-6:13");
+        target.get("November").put(30, "2 Corinthians 6:14-10:18");
+        target.get("December").put(1, "2 Corinthians 11:1-13:13; Acts 20:7-12");
+        target.get("December").put(2, "Acts 20:13-21:36");
+        target.get("December").put(3, "Acts 21:37-23:35");
+        target.get("December").put(4, "Acts 24:1-26:32");
+        target.get("December").put(5, "Acts 27:1-44");
+        target.get("December").put(6, "Acts 28:1-31; Ephesians 1:1-2:22");
+        target.get("December").put(7, "Ephesians 3:1-5:14");
+        target.get("December").put(8, "Ephesians 5:15-6:23; Colossians 1:1-23");
+        target.get("December").put(9, "Colossians 1:24-4:18");
+        target.get("December").put(10, "Philemon 1:1-25; Philippians 1:1-2:11");
+        target.get("December").put(11, "Philippians 2:12-4:23");
+        target.get("December").put(12, "James 1:1-3:18");
+        target.get("December").put(13, "James 4:1-5:20; 1 Timothy 1:1-2:15");
+        target.get("December").put(14, "1 Timothy 3:1-6:10");
+        target.get("December").put(15, "1 Timothy 6:11-21; Titus 1:1-3:15; 2 Timothy 1:1-18");
+        target.get("December").put(16, "2 Timothy 2:1-4:18");
+        target.get("December").put(17, "2 Timothy 4:19-22; Hebrews 1:1-4:13");
+        target.get("December").put(18, "Hebrews 4:14-7:28");
+        target.get("December").put(19, "Hebrews 8:1-10:39");
+        target.get("December").put(20, "Hebrews 11:1-12:29");
+        target.get("December").put(21, "Hebrews 13:1-25; 1 Peter 1:1-2:3");
+        target.get("December").put(22, "1 Peter 2:4-5:11");
+        target.get("December").put(23, "1 Peter 5:12-14; 2 Peter 1:1-3:18");
+        target.get("December").put(24, "1 John 1:1-4:6");
+        target.get("December").put(25, "1 John 4:7-5:21; 2 John 1:1-13; 3 John 1:1-15");
+        target.get("December").put(26, "Jude 1:1-25; Revelation 1:1-2:29");
+        target.get("December").put(27, "Revelation 3:1-6:17");
+        target.get("December").put(28, "Revelation 7:1-10:11");
+        target.get("December").put(29, "Revelation 11:1-14:20");
+        target.get("December").put(30, "Revelation 15:1-18:24");
+        target.get("December").put(31, "Revelation 19:1-22:21");
     }
 
     private ReadingDay findReadingDay(String month, int day) {
@@ -1645,7 +2517,7 @@ public class BibleReader extends Application {
         );
 
         Label welcome = new Label(
-                "Chronological Bible Reading Plan"
+                getCurrentReadingPlanName()
         );
         welcome.setFont(
                 Font.font(
@@ -1676,7 +2548,7 @@ public class BibleReader extends Application {
                 );
 
         Label instructions = new Label(
-                "Select any date in the calendar to open that day's chronological Bible reading."
+                "Select any date in the calendar to open that day's reading from the selected plan."
         );
         instructions.setFont(
                 Font.font("Serif", 17)
@@ -4567,46 +5439,13 @@ public class BibleReader extends Application {
     // ================================================================
 
     private void initializeReadingProgressForCurrentYear() {
-        if (!databaseConfigLoaded || readingDays.isEmpty()) return;
-
-        int year = LocalDate.now().getYear();
-        String countSql = "SELECT COUNT(*) FROM reading_progress WHERE reading_year = ?";
-
-        try (
-                Connection connection = getDatabaseConnection();
-                PreparedStatement countStatement = connection.prepareStatement(countSql)
-        ) {
-            countStatement.setInt(1, year);
-
-            try (ResultSet result = countStatement.executeQuery()) {
-                if (result.next() && result.getInt(1) > 0) return;
-            }
-
-            LocalDate today = LocalDate.now();
-            String todayMonth = today.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-            int todayIndex = findReadingIndex(todayMonth, today.getDayOfMonth());
-            if (todayIndex < 0) return;
-
-            String insertSql =
-                    "INSERT INTO reading_progress "
-                            + "(reading_year, month_name, day_number, completed, completed_at) "
-                            + "VALUES (?, ?, ?, TRUE, CURRENT_TIMESTAMP)";
-
-            try (PreparedStatement insertStatement = connection.prepareStatement(insertSql)) {
-                for (int i = 0; i <= todayIndex; i++) {
-                    ReadingDay readingDay = readingDays.get(i);
-                    insertStatement.setInt(1, year);
-                    insertStatement.setString(2, readingDay.getMonth());
-                    insertStatement.setInt(3, readingDay.getDay());
-                    insertStatement.addBatch();
-                }
-                insertStatement.executeBatch();
-            }
-
-        } catch (SQLException error) {
-            System.err.println("Could not initialize reading progress.");
-            error.printStackTrace();
-        }
+        /*
+         * Completion is user-driven.
+         *
+         * Do not automatically mark earlier dates complete. Each plan
+         * keeps its own completion history and a day receives a check
+         * only after the user marks that reading completed.
+         */
     }
 
     private void loadCurrentReadingCompletion() {
@@ -4626,15 +5465,19 @@ public class BibleReader extends Application {
         if (databaseConfigLoaded) {
             String sql =
                     "SELECT completed FROM reading_progress "
-                            + "WHERE reading_year = ? AND month_name = ? AND day_number = ?";
+                            + "WHERE plan_id = ? "
+                            + "AND reading_year = ? "
+                            + "AND month_name = ? "
+                            + "AND day_number = ?";
 
             try (
                     Connection connection = getDatabaseConnection();
                     PreparedStatement statement = connection.prepareStatement(sql)
             ) {
-                statement.setInt(1, year);
-                statement.setString(2, readingDay.getMonth());
-                statement.setInt(3, readingDay.getDay());
+                statement.setString(1, currentReadingPlanId);
+                statement.setInt(2, year);
+                statement.setString(3, readingDay.getMonth());
+                statement.setInt(4, readingDay.getDay());
 
                 try (ResultSet result = statement.executeQuery()) {
                     if (result.next()) completed = result.getBoolean("completed");
@@ -4659,10 +5502,10 @@ public class BibleReader extends Application {
 
         String sql =
                 "INSERT INTO reading_progress "
-                        + "(reading_year, month_name, day_number, completed, completed_at) "
-                        + "VALUES (?, ?, ?, ?, "
+                        + "(plan_id, reading_year, month_name, day_number, completed, completed_at) "
+                        + "VALUES (?, ?, ?, ?, ?, "
                         + "CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END) "
-                        + "ON CONFLICT(reading_year, month_name, day_number) "
+                        + "ON CONFLICT(plan_id, reading_year, month_name, day_number) "
                         + "DO UPDATE SET "
                         + "completed = excluded.completed, "
                         + "completed_at = CASE "
@@ -4674,11 +5517,12 @@ public class BibleReader extends Application {
                 Connection connection = getDatabaseConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)
         ) {
-            statement.setInt(1, year);
-            statement.setString(2, readingDay.getMonth());
-            statement.setInt(3, readingDay.getDay());
-            statement.setBoolean(4, completed);
+            statement.setString(1, currentReadingPlanId);
+            statement.setInt(2, year);
+            statement.setString(3, readingDay.getMonth());
+            statement.setInt(4, readingDay.getDay());
             statement.setBoolean(5, completed);
+            statement.setBoolean(6, completed);
             statement.executeUpdate();
             refreshReadingPlanCompletionMarks();
         } catch (SQLException error) {
@@ -4699,7 +5543,8 @@ public class BibleReader extends Application {
         String sql =
                 "SELECT month_name, day_number "
                         + "FROM reading_progress "
-                        + "WHERE reading_year = ? "
+                        + "WHERE plan_id = ? "
+                        + "AND reading_year = ? "
                         + "AND completed = TRUE";
 
         try (
@@ -4707,7 +5552,8 @@ public class BibleReader extends Application {
                 PreparedStatement statement =
                         connection.prepareStatement(sql)
         ) {
-            statement.setInt(1, year);
+            statement.setString(1, currentReadingPlanId);
+            statement.setInt(2, year);
 
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) {
@@ -4823,6 +5669,7 @@ public class BibleReader extends Application {
         String createDailyNotes =
                 "CREATE TABLE IF NOT EXISTS daily_notes ("
                         + "note_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        + "plan_id TEXT NOT NULL DEFAULT 'reading_plan_3', "
                         + "month_name TEXT NOT NULL, "
                         + "day_number INTEGER NOT NULL, "
                         + "note_text TEXT NOT NULL, "
@@ -4832,12 +5679,13 @@ public class BibleReader extends Application {
         String createReadingProgress =
                 "CREATE TABLE IF NOT EXISTS reading_progress ("
                         + "progress_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                        + "plan_id TEXT NOT NULL DEFAULT 'reading_plan_3', "
                         + "reading_year INTEGER NOT NULL, "
                         + "month_name TEXT NOT NULL, "
                         + "day_number INTEGER NOT NULL, "
                         + "completed INTEGER NOT NULL DEFAULT 0, "
                         + "completed_at DATETIME, "
-                        + "UNIQUE(reading_year, month_name, day_number)"
+                        + "UNIQUE(plan_id, reading_year, month_name, day_number)"
                         + ")";
 
         try (
@@ -4847,6 +5695,101 @@ public class BibleReader extends Application {
             statement.execute(createDailyNotes);
             statement.execute(createReadingProgress);
         }
+
+        migrateSQLiteMultiPlanSchema(connection);
+    }
+
+    private void migrateSQLiteMultiPlanSchema(
+            Connection connection
+    ) throws SQLException {
+
+        if (!sqliteColumnExists(
+                connection,
+                "daily_notes",
+                "plan_id"
+        )) {
+            try (java.sql.Statement statement =
+                         connection.createStatement()) {
+                statement.executeUpdate(
+                        "ALTER TABLE daily_notes "
+                                + "ADD COLUMN plan_id TEXT "
+                                + "NOT NULL DEFAULT 'reading_plan_3'"
+                );
+            }
+        }
+
+        if (!sqliteColumnExists(
+                connection,
+                "reading_progress",
+                "plan_id"
+        )) {
+            /*
+             * SQLite cannot remove the old UNIQUE(year, month, day)
+             * constraint in place, so rebuild the table once and copy
+             * the existing completion history into Reading Plan 3.
+             */
+            try (java.sql.Statement statement =
+                         connection.createStatement()) {
+
+                statement.executeUpdate(
+                        "CREATE TABLE reading_progress_new ("
+                                + "progress_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                + "plan_id TEXT NOT NULL DEFAULT 'reading_plan_3', "
+                                + "reading_year INTEGER NOT NULL, "
+                                + "month_name TEXT NOT NULL, "
+                                + "day_number INTEGER NOT NULL, "
+                                + "completed INTEGER NOT NULL DEFAULT 0, "
+                                + "completed_at DATETIME, "
+                                + "UNIQUE(plan_id, reading_year, month_name, day_number)"
+                                + ")"
+                );
+
+                statement.executeUpdate(
+                        "INSERT INTO reading_progress_new "
+                                + "(progress_id, plan_id, reading_year, "
+                                + "month_name, day_number, completed, completed_at) "
+                                + "SELECT progress_id, 'reading_plan_3', "
+                                + "reading_year, month_name, day_number, "
+                                + "completed, completed_at "
+                                + "FROM reading_progress"
+                );
+
+                statement.executeUpdate(
+                        "DROP TABLE reading_progress"
+                );
+
+                statement.executeUpdate(
+                        "ALTER TABLE reading_progress_new "
+                                + "RENAME TO reading_progress"
+                );
+            }
+        }
+    }
+
+    private boolean sqliteColumnExists(
+            Connection connection,
+            String table,
+            String column
+    ) throws SQLException {
+
+        try (
+                java.sql.Statement statement =
+                        connection.createStatement();
+                ResultSet result =
+                        statement.executeQuery(
+                                "PRAGMA table_info(" + table + ")"
+                        )
+        ) {
+            while (result.next()) {
+                if (column.equalsIgnoreCase(
+                        result.getString("name")
+                )) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private Connection getDatabaseConnection() throws SQLException {
@@ -4868,7 +5811,8 @@ public class BibleReader extends Application {
         String sql =
                 "SELECT note_id, note_text, created_at "
                         + "FROM daily_notes "
-                        + "WHERE month_name = ? "
+                        + "WHERE plan_id = ? "
+                        + "AND month_name = ? "
                         + "AND day_number = ? "
                         + "ORDER BY created_at DESC, note_id DESC";
 
@@ -4876,8 +5820,9 @@ public class BibleReader extends Application {
                 Connection connection = getDatabaseConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)
         ) {
-            statement.setString(1, readingDay.getMonth());
-            statement.setInt(2, readingDay.getDay());
+            statement.setString(1, currentReadingPlanId);
+            statement.setString(2, readingDay.getMonth());
+            statement.setInt(3, readingDay.getDay());
 
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) {
@@ -4918,15 +5863,18 @@ public class BibleReader extends Application {
 
         ReadingDay readingDay = readingDays.get(currentDayIndex);
         String sql =
-                "INSERT INTO daily_notes (month_name, day_number, note_text) VALUES (?, ?, ?)";
+                "INSERT INTO daily_notes "
+                        + "(plan_id, month_name, day_number, note_text) "
+                        + "VALUES (?, ?, ?, ?)";
 
         try (
                 Connection connection = getDatabaseConnection();
                 PreparedStatement statement = connection.prepareStatement(sql)
         ) {
-            statement.setString(1, readingDay.getMonth());
-            statement.setInt(2, readingDay.getDay());
-            statement.setString(3, noteText);
+            statement.setString(1, currentReadingPlanId);
+            statement.setString(2, readingDay.getMonth());
+            statement.setInt(3, readingDay.getDay());
+            statement.setString(4, noteText);
             statement.executeUpdate();
 
             newNoteArea.clear();
