@@ -180,6 +180,14 @@ public class BibleReader extends Application {
     private WebEngine chartsWebEngine;
     private final Map<String, String> chartEntries = new LinkedHashMap<>();
 
+    private Tab mapsTab;
+    private Label mapsTitleLabel;
+    private Label mapsStatusLabel;
+    private ComboBox<String> mapsSelector;
+    private WebView mapsWebView;
+    private WebEngine mapsWebEngine;
+    private final Map<String, String> mapEntries = new LinkedHashMap<>();
+
     private Tab originalLanguageTab;
     private Label originalLanguageTitleLabel;
     private Label originalLanguageStatusLabel;
@@ -851,6 +859,43 @@ public class BibleReader extends Application {
         VBox.setVgrow(chartsWebView, Priority.ALWAYS);
 
         // ------------------------------------------------------------
+        // Life Application Maps
+        // ------------------------------------------------------------
+        mapsTitleLabel = new Label("Maps");
+        mapsTitleLabel.setFont(
+                Font.font("Serif", FontWeight.BOLD, 18)
+        );
+
+        mapsSelector = new ComboBox<>();
+        mapsSelector.setPromptText(
+                "Choose a map for this reading"
+        );
+        mapsSelector.setMaxWidth(Double.MAX_VALUE);
+        mapsSelector.setOnAction(
+                event -> loadSelectedMap()
+        );
+
+        mapsStatusLabel = new Label(
+                "Select a Bible reading to see matching maps."
+        );
+        mapsStatusLabel.setWrapText(true);
+
+        mapsWebView = new WebView();
+        mapsWebEngine = mapsWebView.getEngine();
+        mapsWebView.setMinHeight(150);
+
+        VBox mapsContent = new VBox(
+                8,
+                mapsTitleLabel,
+                mapsSelector,
+                mapsStatusLabel,
+                mapsWebView
+        );
+        mapsContent.setPadding(new Insets(10));
+        mapsContent.setMinHeight(180);
+        VBox.setVgrow(mapsWebView, Priority.ALWAYS);
+
+        // ------------------------------------------------------------
         // Bible Hub Hebrew / Greek Interlinear
         // ------------------------------------------------------------
         originalLanguageTitleLabel =
@@ -897,21 +942,30 @@ public class BibleReader extends Application {
         chartsTab = new Tab("Charts", chartsContent);
         chartsTab.setClosable(false);
 
+        mapsTab = new Tab("Maps", mapsContent);
+        mapsTab.setClosable(false);
+
         originalLanguageTab =
                 new Tab("Hebrew / Greek", originalLanguageContent);
         originalLanguageTab.setClosable(false);
 
         /*
+         * Hebrew / Greek belongs with the lower study area alongside
+         * Study Notes and Journal.
+         */
+        rightSideTabs.getTabs().add(originalLanguageTab);
+
+        /*
          * Book Introduction is shown only on the first chronological
          * reading day in which a Bible book appears.
          *
-         * Personality Profiles, Charts, and Hebrew / Greek remain
-         * available day-by-day.
+         * Personality Profiles, Charts, and Maps remain in the
+         * upper information area.
          */
         topInfoTabs = new TabPane(
                 personalityProfileTab,
                 chartsTab,
-                originalLanguageTab
+                mapsTab
         );
         topInfoTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -927,7 +981,7 @@ public class BibleReader extends Application {
         VBox.setVgrow(rightInfoSplitPane, Priority.ALWAYS);
 
         /*
-         * The right-side Personality Profiles / Charts / Study Notes / Journal
+         * The right-side Personality Profiles / Charts / Maps / Study Notes / Journal / Hebrew-Greek
          * panel stays visible while reading.  It no longer participates
          * in auto-hide behavior.
          */
@@ -2564,11 +2618,8 @@ public class BibleReader extends Application {
                 topInfoTabs.getTabs().add(chartsTab);
             }
 
-            if (
-                    originalLanguageTab != null
-                            && !topInfoTabs.getTabs().contains(originalLanguageTab)
-            ) {
-                topInfoTabs.getTabs().add(originalLanguageTab);
+            if (mapsTab != null && !topInfoTabs.getTabs().contains(mapsTab)) {
+                topInfoTabs.getTabs().add(mapsTab);
             }
 
             topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -4050,6 +4101,7 @@ public class BibleReader extends Application {
                         || bookIntroductionTab == null
                         || personalityProfileTab == null
                         || chartsTab == null
+                        || mapsTab == null
                         || originalLanguageTab == null
         ) {
             return;
@@ -4076,8 +4128,8 @@ public class BibleReader extends Application {
             topInfoTabs.getTabs().add(chartsTab);
         }
 
-        if (!topInfoTabs.getTabs().contains(originalLanguageTab)) {
-            topInfoTabs.getTabs().add(originalLanguageTab);
+        if (!topInfoTabs.getTabs().contains(mapsTab)) {
+            topInfoTabs.getTabs().add(mapsTab);
         }
 
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -4329,6 +4381,760 @@ public class BibleReader extends Application {
         if (bookIntroductionWebEngine != null) {
             bookIntroductionWebEngine.loadContent(
                     "<html><body style='font-family:Georgia,serif;padding:16px;'>"
+                            + escapeHtml(message)
+                            + "</body></html>",
+                    "text/html"
+            );
+        }
+    }
+
+    // ================================================================
+    // Life Application Maps — matched to the current book/chapter
+    // ================================================================
+
+    private void updateMapsForReference(String referenceText) {
+        if (mapsSelector == null || mapsWebEngine == null) return;
+
+        mapEntries.clear();
+        mapsSelector.getItems().clear();
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            studyBibleEpubFile = findStudyBibleEpub();
+        }
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            clearMaps(
+                    "Study Bible EPUB not found. Expected file: "
+                            + STUDY_BIBLE_FILENAME
+            );
+            return;
+        }
+
+        Map<String, Set<Integer>> readingChapterMap =
+                extractReadingChapterMap(referenceText);
+
+        if (readingChapterMap.isEmpty()) {
+            clearMaps(
+                    "No matching Bible chapter was found for maps."
+            );
+            return;
+        }
+
+        try (ZipFile zipFile = new ZipFile(studyBibleEpubFile)) {
+            for (Map.Entry<String, Set<Integer>> entry
+                    : readingChapterMap.entrySet()) {
+                loadMapsForPassage(
+                        zipFile,
+                        entry.getKey(),
+                        entry.getValue()
+                );
+            }
+        } catch (IOException error) {
+            clearMaps(
+                    "Could not open the Study Bible EPUB: "
+                            + error.getMessage()
+            );
+            error.printStackTrace();
+            return;
+        }
+
+        mapsSelector.getItems().addAll(
+                mapEntries.keySet()
+        );
+
+        if (mapEntries.isEmpty()) {
+            clearMaps(
+                    "No maps match this reading: "
+                            + referenceText
+            );
+            return;
+        }
+
+        String first =
+                mapEntries.keySet()
+                        .iterator()
+                        .next();
+
+        mapsSelector.setValue(first);
+        loadSelectedMap();
+    }
+
+    private void loadMapsForPassage(
+            ZipFile zipFile,
+            String book,
+            Set<Integer> readingChapters
+    ) throws IOException {
+
+        if (
+                book == null
+                        || readingChapters == null
+                        || readingChapters.isEmpty()
+        ) {
+            return;
+        }
+
+        ZipEntry indexEntry =
+                zipFile.getEntry("Maps/00_Maps.xhtml");
+
+        if (indexEntry == null) return;
+
+        String indexHtml;
+
+        try (InputStream input =
+                     zipFile.getInputStream(indexEntry)) {
+            indexHtml = new String(
+                    input.readAllBytes(),
+                    StandardCharsets.UTF_8
+            );
+        }
+
+        String sectionId =
+                mapIndexSectionId(book);
+
+        if (sectionId == null) return;
+
+        Pattern sectionPattern =
+                Pattern.compile(
+                        "(?is)<div\\s+class=[\\\"']Index[\\\"']\\s+"
+                                + "id=[\\\"']"
+                                + Pattern.quote(sectionId)
+                                + "[\\\"']>(.*?)</div>"
+                );
+
+        Matcher sectionMatcher =
+                sectionPattern.matcher(indexHtml);
+
+        if (!sectionMatcher.find()) {
+            return;
+        }
+
+        String sectionHtml =
+                sectionMatcher.group(1);
+
+        Pattern linkPattern =
+                Pattern.compile(
+                        "(?is)<a\\s+[^>]*href=[\\\"']"
+                                + "([^\\\"']+_Map\\.xhtml)"
+                                + "(?:#[^\\\"']*)?[\\\"'][^>]*>"
+                                + "(.*?)</a>"
+                );
+
+        Matcher matcher =
+                linkPattern.matcher(sectionHtml);
+
+        boolean gospel =
+                isGospelBook(book);
+
+        while (matcher.find()) {
+            String relativeEntry =
+                    matcher.group(1).trim();
+
+            String displayName =
+                    stripHtmlTags(
+                            matcher.group(2)
+                    ).trim();
+
+            if (displayName.isEmpty()) continue;
+
+            String fullEntryName =
+                    relativeEntry.startsWith("Maps/")
+                            ? relativeEntry
+                            : "Maps/" + relativeEntry;
+
+            /*
+             * Gospel maps share one chronological index. Only show maps
+             * that actually reference the Gospel and chapter being read.
+             *
+             * Other books have their own map index section, so their
+             * overview maps are useful throughout that book. Where a
+             * chapter-specific reference exists, it is still matched.
+             */
+            boolean matches =
+                    mapMatchesReading(
+                            zipFile,
+                            fullEntryName,
+                            book,
+                            readingChapters
+                    );
+
+            boolean overview =
+                    displayName.toLowerCase(Locale.ENGLISH)
+                            .startsWith("key places");
+
+            if (gospel && !matches && !overview) {
+                continue;
+            }
+
+            if (!gospel && !matches && !overview) {
+                /*
+                 * For the Pauline letters the EPUB map usually covers
+                 * the entire letter (for example Romans 1:1-16:27), so
+                 * chapter matching succeeds. For general book-level maps
+                 * without a specific reference, retain them because they
+                 * belong to the book's own map index section.
+                 */
+                if (!isPaulineLetter(book)) {
+                    continue;
+                }
+            }
+
+            String selectorName =
+                    book + " — " + displayName;
+
+            mapEntries.putIfAbsent(
+                    selectorName,
+                    fullEntryName
+            );
+        }
+
+        /*
+         * When reading Acts or one of Paul's letters, also make Paul's
+         * four major travel maps available so the reader can follow his
+         * movements geographically.
+         */
+        if ("Acts".equals(book) || isPaulineLetter(book)) {
+            addPaulJourneyMapIfPresent(
+                    zipFile,
+                    "Paul’s First Missionary Journey",
+                    "Maps/PaulsFirstMissionaryJourney_Map.xhtml"
+            );
+            addPaulJourneyMapIfPresent(
+                    zipFile,
+                    "Paul’s Second Missionary Journey",
+                    "Maps/PaulsSecondMissionaryJourney_Map.xhtml"
+            );
+            addPaulJourneyMapIfPresent(
+                    zipFile,
+                    "Paul’s Third Missionary Journey",
+                    "Maps/PaulsThirdMissionaryJourney_Map.xhtml"
+            );
+            addPaulJourneyMapIfPresent(
+                    zipFile,
+                    "Paul’s Journey to Rome",
+                    "Maps/PaulsJourneyToRome_Map.xhtml"
+            );
+        }
+    }
+
+    private void addPaulJourneyMapIfPresent(
+            ZipFile zipFile,
+            String displayName,
+            String entryName
+    ) {
+        if (zipFile.getEntry(entryName) != null) {
+            mapEntries.putIfAbsent(
+                    "Paul — " + displayName,
+                    entryName
+            );
+        }
+    }
+
+    private boolean mapMatchesReading(
+            ZipFile zipFile,
+            String mapEntryName,
+            String book,
+            Set<Integer> readingChapters
+    ) throws IOException {
+
+        ZipEntry mapEntry =
+                zipFile.getEntry(mapEntryName);
+
+        if (mapEntry == null) return false;
+
+        String html;
+
+        try (InputStream input =
+                     zipFile.getInputStream(mapEntry)) {
+            html = new String(
+                    input.readAllBytes(),
+                    StandardCharsets.UTF_8
+            );
+        }
+
+        String code =
+                studyBookCodes.get(book);
+
+        if (code == null) return false;
+
+        /*
+         * References inside the map link directly to chapter files such
+         * as 40-Matt-013..., 44-Acts-016..., 45-Rom-001..., etc.
+         */
+        Pattern hrefPattern =
+                Pattern.compile(
+                        "(?i)href=[\\\"'][^\\\"']*"
+                                + Pattern.quote(code)
+                                + "-(\\d{3})"
+                );
+
+        Matcher matcher =
+                hrefPattern.matcher(html);
+
+        boolean foundBookReference = false;
+
+        while (matcher.find()) {
+            foundBookReference = true;
+
+            try {
+                int chapter =
+                        Integer.parseInt(
+                                matcher.group(1)
+                        );
+
+                if (readingChapters.contains(chapter)) {
+                    return true;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
+        /*
+         * If a map's main visible reference spans the whole letter/book,
+         * expand that range so a middle chapter also matches.
+         */
+        Pattern mapRefPattern =
+                Pattern.compile(
+                        "(?is)<(?:p|a)\\s+[^>]*class=[\\\"']"
+                                + "[^\\\"']*map(?:key-)?ref[^\\\"']*"
+                                + "[\\\"'][^>]*>(.*?)</(?:p|a)>"
+                );
+
+        Matcher refMatcher =
+                mapRefPattern.matcher(html);
+
+        while (refMatcher.find()) {
+            String visible =
+                    stripHtmlTags(
+                            refMatcher.group(1)
+                    )
+                            .replace('\u00A0', ' ')
+                            .trim();
+
+            Set<Integer> chapters =
+                    extractChaptersFromMapReference(
+                            visible
+                    );
+
+            for (Integer chapter : chapters) {
+                if (readingChapters.contains(chapter)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private Set<Integer> extractChaptersFromMapReference(
+            String reference
+    ) {
+        LinkedHashSet<Integer> chapters =
+                new LinkedHashSet<>();
+
+        if (reference == null) return chapters;
+
+        Matcher first =
+                Pattern.compile(
+                        "(\\d{1,3}):\\d{1,3}"
+                                + "(?:\\s*[–-]\\s*"
+                                + "(\\d{1,3}):\\d{1,3})?"
+                ).matcher(reference);
+
+        if (first.find()) {
+            int start =
+                    Integer.parseInt(
+                            first.group(1)
+                    );
+            int end = start;
+
+            if (first.group(2) != null) {
+                end = Integer.parseInt(
+                        first.group(2)
+                );
+            }
+
+            if (end >= start && end - start <= 100) {
+                for (int c = start; c <= end; c++) {
+                    chapters.add(c);
+                }
+            }
+        }
+
+        return chapters;
+    }
+
+    private String mapIndexSectionId(String book) {
+        if (isGospelBook(book)) {
+            return "Gospels-Maps_Index_LASB";
+        }
+
+        switch (book) {
+            case "Genesis": return "Gen-Maps_Index_LASB";
+            case "Exodus": return "Exod-Maps_Index_LASB";
+            case "Leviticus": return "Lev-Maps_Index_LASB";
+            case "Numbers": return "Num-Maps_Index_LASB";
+            case "Deuteronomy": return "Deut-Maps_Index_LASB";
+            case "Joshua": return "Josh-Maps_Index_LASB";
+            case "Judges": return "Judg-Maps_Index_LASB";
+            case "Ruth": return "Ruth-Maps_Index_LASB";
+            case "1 Samuel": return "ISam-Maps_Index_LASB";
+            case "2 Samuel": return "IISam-Maps_Index_LASB";
+            case "1 Kings": return "IKgs-Maps_Index_LASB";
+            case "2 Kings": return "IIKgs-Maps_Index_LASB";
+            case "1 Chronicles": return "IChr-Maps_Index_LASB";
+            case "2 Chronicles": return "IIChr-Maps_Index_LASB";
+            case "Ezra": return "Ezra-Maps_Index_LASB";
+            case "Nehemiah": return "Neh-Maps_Index_LASB";
+            case "Esther": return "Esth-Maps_Index_LASB";
+            case "Job": return "Job-Maps_Index_LASB";
+            case "Song of Solomon":
+            case "Song of Songs": return "Song-Maps_Index_LASB";
+            case "Isaiah": return "Isa-Maps_Index_LASB";
+            case "Jeremiah": return "Jer-Maps_Index_LASB";
+            case "Ezekiel": return "Ezek-Maps_Index_LASB";
+            case "Daniel": return "Dan-Maps_Index_LASB";
+            case "Hosea": return "Hos-Maps_Index_LASB";
+            case "Joel": return "Joel-Maps_Index_LASB";
+            case "Amos": return "Amos-Maps_Index_LASB";
+            case "Obadiah": return "Obad-Maps_Index_LASB";
+            case "Jonah": return "Jon-Maps_Index_LASB";
+            case "Micah": return "Mic-Maps_Index_LASB";
+            case "Nahum": return "Nah-Maps_Index_LASB";
+            case "Habakkuk": return "Hab-Maps_Index_LASB";
+            case "Zephaniah": return "Zeph-Maps_Index_LASB";
+            case "Haggai": return "Hagg-Maps_Index_LASB";
+            case "Zechariah": return "Zech-Maps_Index_LASB";
+            case "Malachi": return "Mal-Maps_Index_LASB";
+            case "Acts": return "Acts-Maps_Index_LASB";
+            case "Romans": return "Rom-Maps_Index_LASB";
+            case "1 Corinthians": return "ICor-Maps_Index_LASB";
+            case "2 Corinthians": return "IICor-Maps_Index_LASB";
+            case "Galatians": return "Gal-Maps_Index_LASB";
+            case "Ephesians": return "Eph-Maps_Index_LASB";
+            case "Philippians": return "Phil-Maps_Index_LASB";
+            case "Colossians": return "Col-Maps_Index_LASB";
+            case "1 Thessalonians": return "IThes-Maps_Index_LASB";
+            case "2 Thessalonians": return "IIThes-Maps_Index_LASB";
+            case "Titus": return "Titus-Maps_Index_LASB";
+            case "1 Peter": return "IPet-Maps_Index_LASB";
+            case "Revelation": return "Rev-Maps_Index_LASB";
+            default: return null;
+        }
+    }
+
+    private boolean isGospelBook(String book) {
+        return "Matthew".equals(book)
+                || "Mark".equals(book)
+                || "Luke".equals(book)
+                || "John".equals(book);
+    }
+
+    private boolean isPaulineLetter(String book) {
+        return "Romans".equals(book)
+                || "1 Corinthians".equals(book)
+                || "2 Corinthians".equals(book)
+                || "Galatians".equals(book)
+                || "Ephesians".equals(book)
+                || "Philippians".equals(book)
+                || "Colossians".equals(book)
+                || "1 Thessalonians".equals(book)
+                || "2 Thessalonians".equals(book)
+                || "1 Timothy".equals(book)
+                || "2 Timothy".equals(book)
+                || "Titus".equals(book)
+                || "Philemon".equals(book);
+    }
+
+    private void loadSelectedMap() {
+        if (mapsSelector == null || mapsWebEngine == null) {
+            return;
+        }
+
+        String selection =
+                mapsSelector.getValue();
+
+        if (selection == null || selection.isBlank()) {
+            return;
+        }
+
+        String entryName =
+                mapEntries.get(selection);
+
+        if (entryName == null) {
+            clearMaps(
+                    "Could not find the selected map."
+            );
+            return;
+        }
+
+        loadMap(selection, entryName);
+    }
+
+    private void loadMap(
+            String displayName,
+            String entryName
+    ) {
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            studyBibleEpubFile = findStudyBibleEpub();
+        }
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            clearMaps(
+                    "Study Bible EPUB not found. Expected file: "
+                            + STUDY_BIBLE_FILENAME
+            );
+            return;
+        }
+
+        try (ZipFile zipFile = new ZipFile(studyBibleEpubFile)) {
+            ZipEntry entry =
+                    zipFile.getEntry(entryName);
+
+            if (entry == null) {
+                clearMaps(
+                        "The selected map was not found in the EPUB."
+                );
+                return;
+            }
+
+            String html;
+
+            try (InputStream input =
+                     zipFile.getInputStream(entry)) {
+                html = new String(
+                        input.readAllBytes(),
+                        StandardCharsets.UTF_8
+                );
+            }
+
+            html = prepareMapHtml(
+                    zipFile,
+                    html,
+                    entryName
+            );
+
+            mapsTitleLabel.setText(
+                    "Life Application Map — "
+                            + displayName
+            );
+
+            mapsStatusLabel.setText(
+                    "Loaded locally from the Life Application Study Bible."
+            );
+
+            mapsWebEngine.loadContent(
+                    html,
+                    "text/html"
+            );
+
+        } catch (IOException error) {
+            clearMaps(
+                    "Could not load the map: "
+                            + error.getMessage()
+            );
+            error.printStackTrace();
+        }
+    }
+
+    private String prepareMapHtml(
+            ZipFile zipFile,
+            String html,
+            String entryName
+    ) throws IOException {
+
+        String cleaned =
+                html.replaceAll(
+                        "(?is)<link[^>]*rel=[\\\"']stylesheet[\\\"'][^>]*/?>",
+                        ""
+                );
+
+        /*
+         * Embed each EPUB image directly as a data URI. This is important
+         * because WebView cannot resolve an image path inside a ZIP/EPUB
+         * when loadContent(...) is used.
+         */
+        Pattern imagePattern =
+                Pattern.compile(
+                        "(?is)<img([^>]*?)src=[\\\"']"
+                                + "([^\\\"']+)"
+                                + "[\\\"']([^>]*)>"
+                );
+
+        Matcher imageMatcher =
+                imagePattern.matcher(cleaned);
+
+        StringBuffer imageBuffer =
+                new StringBuffer();
+
+        while (imageMatcher.find()) {
+            String src =
+                    imageMatcher.group(2);
+
+            String imageEntryName =
+                    resolveZipRelativePath(
+                            entryName,
+                            src
+                    );
+
+            ZipEntry imageEntry =
+                    zipFile.getEntry(imageEntryName);
+
+            String replacement;
+
+            if (imageEntry == null) {
+                replacement = "";
+            } else {
+                byte[] bytes;
+
+                try (InputStream imageInput =
+                             zipFile.getInputStream(imageEntry)) {
+                    bytes =
+                            imageInput.readAllBytes();
+                }
+
+                String mime =
+                        imageEntryName
+                                .toLowerCase(Locale.ENGLISH)
+                                .endsWith(".png")
+                                ? "image/png"
+                                : "image/jpeg";
+
+                String encoded =
+                        Base64.getEncoder()
+                                .encodeToString(bytes);
+
+                replacement =
+                        "<img"
+                                + imageMatcher.group(1)
+                                + "src=\"data:"
+                                + mime
+                                + ";base64,"
+                                + encoded
+                                + "\""
+                                + imageMatcher.group(3)
+                                + ">";
+            }
+
+            imageMatcher.appendReplacement(
+                    imageBuffer,
+                    Matcher.quoteReplacement(
+                            replacement
+                    )
+            );
+        }
+
+        imageMatcher.appendTail(imageBuffer);
+        cleaned = imageBuffer.toString();
+
+        cleaned = cleaned.replaceAll(
+                "(?i)href=[\\\"'][^\\\"']*[\\\"']",
+                "href=\"#\""
+        );
+
+        String style =
+                "<style>"
+                        + "body{font-family:Georgia,'Times New Roman',serif;"
+                        + "font-size:15px;line-height:1.45;margin:12px;"
+                        + "color:#222;background:#fff;}"
+                        + "img{display:block;max-width:100%;height:auto;"
+                        + "margin:0 auto 12px auto;}"
+                        + ".maphead,.mapkey-title{font-size:18px;"
+                        + "font-weight:bold;color:#5d2815;}"
+                        + ".map,.mapkey-first,.mapkey-ref{margin:8px 0;}"
+                        + "a{color:#5d2815;text-decoration:none;}"
+                        + "</style>";
+
+        if (
+                cleaned.toLowerCase(Locale.ENGLISH)
+                        .contains("</head>")
+        ) {
+            cleaned = cleaned.replaceFirst(
+                    "(?i)</head>",
+                    Matcher.quoteReplacement(
+                            style + "</head>"
+                    )
+            );
+        } else {
+            cleaned = style + cleaned;
+        }
+
+        return cleaned;
+    }
+
+    private String resolveZipRelativePath(
+            String htmlEntryName,
+            String relativePath
+    ) {
+        if (relativePath == null) return "";
+
+        if (
+                relativePath.startsWith("/")
+                        || relativePath.startsWith("Maps/")
+        ) {
+            return relativePath.startsWith("/")
+                    ? relativePath.substring(1)
+                    : relativePath;
+        }
+
+        int slash =
+                htmlEntryName.lastIndexOf('/');
+
+        String base =
+                slash >= 0
+                        ? htmlEntryName.substring(
+                                0,
+                                slash + 1
+                        )
+                        : "";
+
+        String combined =
+                base + relativePath;
+
+        List<String> parts =
+                new ArrayList<>();
+
+        for (String part : combined.split("/")) {
+            if (
+                    part.isEmpty()
+                            || ".".equals(part)
+            ) {
+                continue;
+            }
+
+            if ("..".equals(part)) {
+                if (!parts.isEmpty()) {
+                    parts.remove(
+                            parts.size() - 1
+                    );
+                }
+            } else {
+                parts.add(part);
+            }
+        }
+
+        return String.join("/", parts);
+    }
+
+    private void clearMaps(String message) {
+        mapEntries.clear();
+
+        if (mapsSelector != null) {
+            mapsSelector.getItems().clear();
+            mapsSelector.setValue(null);
+        }
+
+        if (mapsTitleLabel != null) {
+            mapsTitleLabel.setText("Maps");
+        }
+
+        if (mapsStatusLabel != null) {
+            mapsStatusLabel.setText(message);
+        }
+
+        if (mapsWebEngine != null) {
+            mapsWebEngine.loadContent(
+                    "<html><body style='font-family:Georgia,serif;"
+                            + "padding:16px;color:#222;background:#fff;'>"
                             + escapeHtml(message)
                             + "</body></html>",
                     "text/html"
@@ -5545,6 +6351,7 @@ public class BibleReader extends Application {
     private void updateStudyNotesForReference(String referenceText) {
         updatePersonalityProfilesForReference(referenceText);
         updateChartsForReference(referenceText);
+        updateMapsForReference(referenceText);
         updateBookIntroductionsForReference(referenceText);
         updateOriginalLanguageForReference(referenceText);
         updateTimelineForReference(referenceText);
