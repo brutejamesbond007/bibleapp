@@ -52,6 +52,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -216,6 +217,15 @@ public class BibleReader extends Application {
     private WebView timelineWebView;
     private WebEngine timelineWebEngine;
     private final Map<String, String> timelineEntries = new LinkedHashMap<>();
+
+    private TabPane bottomReferenceTabs;
+    private TextField concordanceSearchField;
+    private ComboBox<String> concordanceLetterSelector;
+    private WebView concordanceWebView;
+    private WebEngine concordanceWebEngine;
+    private Label concordanceStatusLabel;
+    private WebView weightsWebView;
+    private WebEngine weightsWebEngine;
 
     private Button previousButton;
     private Button readingPlanButton;
@@ -996,15 +1006,6 @@ public class BibleReader extends Application {
          */
         if (!rightSideTabs.getTabs().contains(originalLanguageTab)) {
             rightSideTabs.getTabs().add(1, originalLanguageTab);
-        }
-
-        /*
-         * Alphabet is always after Journal. Its content changes
-         * automatically between Hebrew (Old Testament) and Greek
-         * (New Testament).
-         */
-        if (!rightSideTabs.getTabs().contains(alphabetTab)) {
-            rightSideTabs.getTabs().add(alphabetTab);
         }
 
         /*
@@ -3007,20 +3008,549 @@ public class BibleReader extends Application {
         timelineWebView.setMinHeight(90);
         timelineWebView.setPrefHeight(190);
 
-        timelinePanel = new VBox(
+        VBox timelineContent = new VBox(
                 6,
                 timelineHeader,
                 timelineWebView
         );
-        timelinePanel.setPadding(new Insets(8, 10, 8, 10));
+        timelineContent.setPadding(new Insets(8, 10, 8, 10));
+        timelineContent.setMinHeight(95);
+        VBox.setVgrow(timelineWebView, Priority.ALWAYS);
+
+        Tab timelineTab = new Tab("Timeline", timelineContent);
+        timelineTab.setClosable(false);
+
+        /*
+         * The alphabet tab is created with the right-side study controls,
+         * but it belongs in this bottom reference area. Its label and
+         * contents automatically switch between Hebrew and Greek.
+         */
+        if (alphabetTab == null) {
+            alphabetTab = new Tab("Alphabet");
+            alphabetTab.setClosable(false);
+        }
+
+        // ------------------------------------------------------------
+        // Local NLT Concordance + Life Application topic/dictionary index
+        // ------------------------------------------------------------
+        Label concordanceTitle = new Label("Concordance / Dictionary");
+        concordanceTitle.setFont(
+                Font.font("Serif", FontWeight.BOLD, 18)
+        );
+
+        concordanceSearchField = new TextField();
+        concordanceSearchField.setPromptText(
+                "Search a word, person, place, or topic"
+        );
+
+        Button concordanceSearchButton = new Button("Search");
+        concordanceSearchButton.setOnAction(
+                event -> searchLocalConcordanceDictionary()
+        );
+        concordanceSearchField.setOnAction(
+                event -> searchLocalConcordanceDictionary()
+        );
+
+        concordanceLetterSelector = new ComboBox<>();
+        concordanceLetterSelector.setPromptText("Concordance letter");
+        concordanceLetterSelector.getItems().addAll(
+                "A","B","C","D","E","F","G","H","I","J","K","L","M",
+                "N","O","P","Q","R","S","T","U","V","W","Y","Z"
+        );
+        concordanceLetterSelector.setOnAction(
+                event -> loadSelectedConcordanceLetter()
+        );
+
+        HBox concordanceControls = new HBox(
+                8,
+                concordanceSearchField,
+                concordanceSearchButton,
+                concordanceLetterSelector
+        );
+        concordanceControls.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(concordanceSearchField, Priority.ALWAYS);
+
+        concordanceStatusLabel = new Label(
+                "Search the local Life Application Study Bible concordance and topic index."
+        );
+        concordanceStatusLabel.setWrapText(true);
+
+        concordanceWebView = new WebView();
+        concordanceWebEngine = concordanceWebView.getEngine();
+        concordanceWebView.setMinHeight(90);
+
+        VBox concordanceContent = new VBox(
+                6,
+                concordanceTitle,
+                concordanceControls,
+                concordanceStatusLabel,
+                concordanceWebView
+        );
+        concordanceContent.setPadding(new Insets(8, 10, 8, 10));
+        VBox.setVgrow(concordanceWebView, Priority.ALWAYS);
+
+        Tab concordanceTab =
+                new Tab("Concordance / Dictionary", concordanceContent);
+        concordanceTab.setClosable(false);
+
+        // ------------------------------------------------------------
+        // Ancient Weights and Measures from the local Study Bible EPUB
+        // ------------------------------------------------------------
+        Label weightsTitle =
+                new Label("Ancient Weights and Measures");
+        weightsTitle.setFont(
+                Font.font("Serif", FontWeight.BOLD, 18)
+        );
+
+        Label weightsStatus = new Label(
+                "Biblical weights, lengths, dry measures, and liquid measures."
+        );
+        weightsStatus.setWrapText(true);
+
+        weightsWebView = new WebView();
+        weightsWebEngine = weightsWebView.getEngine();
+        weightsWebView.setMinHeight(90);
+
+        VBox weightsContent = new VBox(
+                6,
+                weightsTitle,
+                weightsStatus,
+                weightsWebView
+        );
+        weightsContent.setPadding(new Insets(8, 10, 8, 10));
+        VBox.setVgrow(weightsWebView, Priority.ALWAYS);
+
+        Tab weightsTab =
+                new Tab("Ancient Weights", weightsContent);
+        weightsTab.setClosable(false);
+
+        bottomReferenceTabs = new TabPane(
+                timelineTab,
+                alphabetTab,
+                concordanceTab,
+                weightsTab
+        );
+        bottomReferenceTabs.setTabClosingPolicy(
+                TabPane.TabClosingPolicy.UNAVAILABLE
+        );
+
+        timelinePanel = new VBox(bottomReferenceTabs);
+        timelinePanel.setPadding(new Insets(0));
         timelinePanel.setMinHeight(95);
         timelinePanel.setPrefHeight(245);
         timelinePanel.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(timelineWebView, Priority.ALWAYS);
+        VBox.setVgrow(bottomReferenceTabs, Priority.ALWAYS);
 
         clearTimeline(
                 "Open a chronological reading to see the timeline chart for the current Bible book."
         );
+        clearConcordanceDictionary(
+                "Search the local Life Application Study Bible concordance and topic index."
+        );
+        loadAncientWeightsAndMeasures();
+    }
+
+    private void loadSelectedConcordanceLetter() {
+        if (
+                concordanceLetterSelector == null
+                        || concordanceWebEngine == null
+        ) {
+            return;
+        }
+
+        String letter =
+                concordanceLetterSelector.getValue();
+
+        if (letter == null || letter.isBlank()) {
+            return;
+        }
+
+        loadLocalEpubReferencePage(
+                "NLT-Concordance/" + letter + "_NLT-Conc.xhtml",
+                concordanceWebEngine,
+                "NLT Concordance — " + letter,
+                concordanceStatusLabel
+        );
+    }
+
+    private void searchLocalConcordanceDictionary() {
+        if (
+                concordanceSearchField == null
+                        || concordanceWebEngine == null
+        ) {
+            return;
+        }
+
+        String query =
+                concordanceSearchField.getText();
+
+        if (query == null || query.isBlank()) {
+            clearConcordanceDictionary(
+                    "Enter a word, person, place, or topic to search."
+            );
+            return;
+        }
+
+        query = query.trim();
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            studyBibleEpubFile = findStudyBibleEpub();
+        }
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            clearConcordanceDictionary(
+                    "Study Bible EPUB not found."
+            );
+            return;
+        }
+
+        String upper =
+                query.toUpperCase(Locale.ENGLISH);
+
+        String normalized =
+                upper.replaceAll("[^A-Z0-9]+", "-")
+                        .replaceAll("^-+|-+$", "");
+
+        String firstLetter =
+                upper.substring(0, 1)
+                        .replaceAll("[^A-Z]", "");
+
+        StringBuilder html = new StringBuilder();
+        html.append("<html><head><meta charset='UTF-8'>")
+                .append(referencePageStyle())
+                .append("</head><body>")
+                .append("<h2>Search: ")
+                .append(escapeHtml(query))
+                .append("</h2>");
+
+        boolean found = false;
+
+        try (ZipFile zipFile = new ZipFile(studyBibleEpubFile)) {
+
+            /*
+             * First look in the Life Application Master Index. This works
+             * like a compact Bible dictionary/topic index for people,
+             * places, books, themes, and study subjects.
+             */
+            List<String> masterMatches = new ArrayList<>();
+
+            Enumeration<? extends ZipEntry> entries =
+                    zipFile.entries();
+
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                String name = entry.getName();
+
+                if (
+                        name.startsWith("MasterIndex/")
+                                && name.endsWith("_MasterIndex.xhtml")
+                                && !name.contains("00-Abbreviations")
+                                && !name.endsWith("01-MasterIndex.xhtml")
+                ) {
+                    String fileKey =
+                            name.substring(
+                                    name.lastIndexOf('/') + 1,
+                                    name.length() - "_MasterIndex.xhtml".length()
+                            )
+                                    .replace('-', ' ')
+                                    .toUpperCase(Locale.ENGLISH);
+
+                    if (
+                            fileKey.contains(
+                                    upper.replaceAll("[^A-Z0-9]+", " ")
+                            )
+                                    || normalized.contains(
+                                    fileKey.replace(' ', '-')
+                            )
+                    ) {
+                        masterMatches.add(name);
+                    }
+                }
+            }
+
+            int shown = 0;
+
+            for (String entryName : masterMatches) {
+                if (shown >= 12) break;
+
+                ZipEntry entry =
+                        zipFile.getEntry(entryName);
+
+                if (entry == null) continue;
+
+                String page;
+
+                try (InputStream input =
+                             zipFile.getInputStream(entry)) {
+                    page = new String(
+                            input.readAllBytes(),
+                            StandardCharsets.UTF_8
+                    );
+                }
+
+                String body =
+                        extractHtmlBody(page);
+
+                html.append("<div class='card'>")
+                        .append(body)
+                        .append("</div>");
+
+                found = true;
+                shown++;
+            }
+
+            /*
+             * Also search the appropriate NLT concordance letter page.
+             * The result is a compact excerpt around occurrences of the
+             * requested word rather than dumping the entire large page.
+             */
+            if (!firstLetter.isBlank()) {
+                ZipEntry concEntry =
+                        zipFile.getEntry(
+                                "NLT-Concordance/"
+                                        + firstLetter
+                                        + "_NLT-Conc.xhtml"
+                        );
+
+                if (concEntry != null) {
+                    String concHtml;
+
+                    try (InputStream input =
+                                 zipFile.getInputStream(concEntry)) {
+                        concHtml = new String(
+                                input.readAllBytes(),
+                                StandardCharsets.UTF_8
+                        );
+                    }
+
+                    String plain =
+                            stripHtmlTags(concHtml)
+                                    .replace('\u00A0', ' ')
+                                    .replaceAll("\\s+", " ")
+                                    .trim();
+
+                    String lowerPlain =
+                            plain.toLowerCase(Locale.ENGLISH);
+                    String lowerQuery =
+                            query.toLowerCase(Locale.ENGLISH);
+
+                    int from = 0;
+                    int hits = 0;
+
+                    while (hits < 8) {
+                        int pos =
+                                lowerPlain.indexOf(
+                                        lowerQuery,
+                                        from
+                                );
+
+                        if (pos < 0) break;
+
+                        int start =
+                                Math.max(0, pos - 220);
+                        int end =
+                                Math.min(
+                                        plain.length(),
+                                        pos + query.length() + 420
+                                );
+
+                        String excerpt =
+                                plain.substring(start, end);
+
+                        html.append("<div class='card'>")
+                                .append("<b>Concordance</b><br>")
+                                .append(escapeHtml(excerpt))
+                                .append("</div>");
+
+                        found = true;
+                        hits++;
+                        from = pos + query.length();
+                    }
+                }
+            }
+
+        } catch (IOException error) {
+            clearConcordanceDictionary(
+                    "Could not search the local Study Bible: "
+                            + error.getMessage()
+            );
+            return;
+        }
+
+        if (!found) {
+            html.append("<p>No local concordance or dictionary/topic-index "
+                    + "entry was found for <b>")
+                    .append(escapeHtml(query))
+                    .append("</b>.</p>");
+        }
+
+        html.append("</body></html>");
+
+        concordanceStatusLabel.setText(
+                "Local Life Application Study Bible search results."
+        );
+
+        concordanceWebEngine.loadContent(
+                html.toString(),
+                "text/html"
+        );
+    }
+
+    private void clearConcordanceDictionary(String message) {
+        if (concordanceStatusLabel != null) {
+            concordanceStatusLabel.setText(message);
+        }
+
+        if (concordanceWebEngine != null) {
+            concordanceWebEngine.loadContent(
+                    "<html><head>"
+                            + referencePageStyle()
+                            + "</head><body><p>"
+                            + escapeHtml(message)
+                            + "</p></body></html>",
+                    "text/html"
+            );
+        }
+    }
+
+    private void loadAncientWeightsAndMeasures() {
+        if (weightsWebEngine == null) return;
+
+        loadLocalEpubReferencePage(
+                "Reference/Weights-Measures.xhtml",
+                weightsWebEngine,
+                "Ancient Weights and Measures",
+                null
+        );
+    }
+
+    private void loadLocalEpubReferencePage(
+            String entryName,
+            WebEngine engine,
+            String title,
+            Label statusLabel
+    ) {
+        if (engine == null) return;
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            studyBibleEpubFile = findStudyBibleEpub();
+        }
+
+        if (studyBibleEpubFile == null || !studyBibleEpubFile.isFile()) {
+            engine.loadContent(
+                    "<html><body>Study Bible EPUB not found.</body></html>",
+                    "text/html"
+            );
+            return;
+        }
+
+        try (ZipFile zipFile = new ZipFile(studyBibleEpubFile)) {
+            ZipEntry entry =
+                    zipFile.getEntry(entryName);
+
+            if (entry == null) {
+                engine.loadContent(
+                        "<html><body>"
+                                + escapeHtml(title)
+                                + " was not found in the Study Bible EPUB."
+                                + "</body></html>",
+                        "text/html"
+                );
+                return;
+            }
+
+            String html;
+
+            try (InputStream input =
+                         zipFile.getInputStream(entry)) {
+                html = new String(
+                        input.readAllBytes(),
+                        StandardCharsets.UTF_8
+                );
+            }
+
+            String body =
+                    extractHtmlBody(html);
+
+            String prepared =
+                    "<html><head><meta charset='UTF-8'>"
+                            + referencePageStyle()
+                            + "</head><body>"
+                            + body
+                            + "</body></html>";
+
+            engine.loadContent(
+                    prepared,
+                    "text/html"
+            );
+
+            if (statusLabel != null) {
+                statusLabel.setText(
+                        "Loaded locally from the Life Application Study Bible."
+                );
+            }
+
+        } catch (IOException error) {
+            engine.loadContent(
+                    "<html><body>Could not load "
+                            + escapeHtml(title)
+                            + ": "
+                            + escapeHtml(error.getMessage())
+                            + "</body></html>",
+                    "text/html"
+            );
+        }
+    }
+
+    private String extractHtmlBody(String html) {
+        if (html == null) return "";
+
+        Matcher bodyMatcher =
+                Pattern.compile(
+                        "(?is)<body[^>]*>(.*?)</body>"
+                ).matcher(html);
+
+        String body =
+                bodyMatcher.find()
+                        ? bodyMatcher.group(1)
+                        : html;
+
+        body = body.replaceAll(
+                "(?is)<script[^>]*>.*?</script>",
+                ""
+        );
+
+        body = body.replaceAll(
+                "(?is)<link[^>]*>",
+                ""
+        );
+
+        /*
+         * Disable EPUB-internal navigation in these compact reference
+         * panes. The information remains readable without leaving the tab.
+         */
+        body = body.replaceAll(
+                "(?i)href=[\\\"'][^\\\"']*[\\\"']",
+                "href=\"#\""
+        );
+
+        return body;
+    }
+
+    private String referencePageStyle() {
+        return "<style>"
+                + "body{font-family:Georgia,'Times New Roman',serif;"
+                + "font-size:15px;line-height:1.45;margin:12px;"
+                + "color:#222;background:#fff;}"
+                + "h1,h2,h3{color:#5d2815;}"
+                + "table{border-collapse:collapse;width:100%;}"
+                + "th,td{padding:6px 8px;border-bottom:1px solid #ddd;"
+                + "vertical-align:top;}"
+                + "th{background:#f4f1e8;}"
+                + ".card{padding:10px;margin:8px 0;border:1px solid #ddd;"
+                + "border-radius:4px;}"
+                + "a{color:#5d2815;text-decoration:none;}"
+                + "</style>";
     }
 
     private void updateTimelineForReference(String referenceText) {
