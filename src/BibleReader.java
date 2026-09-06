@@ -219,6 +219,7 @@ public class BibleReader extends Application {
     private final Map<String, String> timelineEntries = new LinkedHashMap<>();
 
     private TabPane bottomReferenceTabs;
+    private Tab concordanceTab;
     private TextField concordanceSearchField;
     private ComboBox<String> concordanceLetterSelector;
     private WebView concordanceWebView;
@@ -320,6 +321,17 @@ public class BibleReader extends Application {
         createReadingArea();
         createReadingPlanPanel();
         createTimelinePanel();
+
+        /*
+         * Concordance / Dictionary belongs in the right-side study area
+         * immediately after Journal.
+         */
+        if (
+                concordanceTab != null
+                        && !rightSideTabs.getTabs().contains(concordanceTab)
+        ) {
+            rightSideTabs.getTabs().add(concordanceTab);
+        }
         createNavigationBar();
 
         studyBibleEpubFile = findStudyBibleEpub();
@@ -3089,7 +3101,7 @@ public class BibleReader extends Application {
         concordanceContent.setPadding(new Insets(8, 10, 8, 10));
         VBox.setVgrow(concordanceWebView, Priority.ALWAYS);
 
-        Tab concordanceTab =
+        concordanceTab =
                 new Tab("Concordance / Dictionary", concordanceContent);
         concordanceTab.setClosable(false);
 
@@ -3127,7 +3139,6 @@ public class BibleReader extends Application {
         bottomReferenceTabs = new TabPane(
                 timelineTab,
                 alphabetTab,
-                concordanceTab,
                 weightsTab
         );
         bottomReferenceTabs.setTabClosingPolicy(
