@@ -195,6 +195,12 @@ public class BibleReader extends Application {
     private WebView originalLanguageWebView;
     private WebEngine originalLanguageWebEngine;
 
+    private Tab alphabetTab;
+    private Label alphabetTitleLabel;
+    private Label alphabetStatusLabel;
+    private WebView alphabetWebView;
+    private WebEngine alphabetWebEngine;
+
     private ComboBox<String> studyReferenceSelector;
     private Label studyNotesTitleLabel;
     private Label studyNotesStatusLabel;
@@ -933,6 +939,33 @@ public class BibleReader extends Application {
         originalLanguageContent.setMinHeight(180);
         VBox.setVgrow(originalLanguageWebView, Priority.ALWAYS);
 
+        // ------------------------------------------------------------
+        // Hebrew / Greek Alphabet Reference
+        // ------------------------------------------------------------
+        alphabetTitleLabel = new Label("Alphabet Reference");
+        alphabetTitleLabel.setFont(
+                Font.font("Serif", FontWeight.BOLD, 18)
+        );
+
+        alphabetStatusLabel = new Label(
+                "Select a Bible chapter to see its original-language alphabet."
+        );
+        alphabetStatusLabel.setWrapText(true);
+
+        alphabetWebView = new WebView();
+        alphabetWebEngine = alphabetWebView.getEngine();
+        alphabetWebView.setMinHeight(180);
+
+        VBox alphabetContent = new VBox(
+                8,
+                alphabetTitleLabel,
+                alphabetStatusLabel,
+                alphabetWebView
+        );
+        alphabetContent.setPadding(new Insets(10));
+        alphabetContent.setMinHeight(180);
+        VBox.setVgrow(alphabetWebView, Priority.ALWAYS);
+
         bookIntroductionTab = new Tab("Book Introduction", bookIntroductionContent);
         bookIntroductionTab.setClosable(false);
 
@@ -949,6 +982,10 @@ public class BibleReader extends Application {
                 new Tab("Hebrew / Greek", originalLanguageContent);
         originalLanguageTab.setClosable(false);
 
+        alphabetTab =
+                new Tab("Alphabet", alphabetContent);
+        alphabetTab.setClosable(false);
+
         /*
          * Hebrew / Greek belongs with the lower study area alongside
          * Study Notes and Journal.
@@ -959,6 +996,15 @@ public class BibleReader extends Application {
          */
         if (!rightSideTabs.getTabs().contains(originalLanguageTab)) {
             rightSideTabs.getTabs().add(1, originalLanguageTab);
+        }
+
+        /*
+         * Alphabet is always after Journal. Its content changes
+         * automatically between Hebrew (Old Testament) and Greek
+         * (New Testament).
+         */
+        if (!rightSideTabs.getTabs().contains(alphabetTab)) {
+            rightSideTabs.getTabs().add(alphabetTab);
         }
 
         /*
@@ -3803,6 +3849,9 @@ public class BibleReader extends Application {
             clearOriginalLanguage(
                     "No matching Bible chapter was found for this reading."
             );
+            clearAlphabetReference(
+                    "Select a Bible chapter to see its original-language alphabet."
+            );
             return;
         }
 
@@ -3876,6 +3925,8 @@ public class BibleReader extends Application {
                         : "Hebrew Interlinear — " + book + " " + chapter
         );
 
+        updateAlphabetReference(book);
+
         originalLanguageStatusLabel.setText(
                 "Loaded from Bible Hub. "
                         + "Use the Strong's links and word entries for concordance study."
@@ -3909,6 +3960,226 @@ public class BibleReader extends Application {
                     "text/html"
             );
         }
+    }
+
+    private void updateAlphabetReference(String book) {
+        if (
+                alphabetTab == null
+                        || alphabetTitleLabel == null
+                        || alphabetStatusLabel == null
+                        || alphabetWebEngine == null
+        ) {
+            return;
+        }
+
+        if (isNewTestamentBook(book)) {
+            alphabetTab.setText("Greek Alphabet");
+            alphabetTitleLabel.setText("Greek Alphabet");
+            alphabetStatusLabel.setText(
+                    "New Testament original-language alphabet reference."
+            );
+            alphabetWebEngine.loadContent(
+                    buildGreekAlphabetHtml(),
+                    "text/html"
+            );
+        } else {
+            alphabetTab.setText("Hebrew Alphabet");
+            alphabetTitleLabel.setText("Hebrew Alphabet");
+            alphabetStatusLabel.setText(
+                    "Old Testament Hebrew alphabet reference — read from right to left."
+            );
+            alphabetWebEngine.loadContent(
+                    buildHebrewAlphabetHtml(),
+                    "text/html"
+            );
+        }
+    }
+
+    private void clearAlphabetReference(String message) {
+        if (alphabetTab != null) {
+            alphabetTab.setText("Alphabet");
+        }
+
+        if (alphabetTitleLabel != null) {
+            alphabetTitleLabel.setText("Alphabet Reference");
+        }
+
+        if (alphabetStatusLabel != null) {
+            alphabetStatusLabel.setText(message);
+        }
+
+        if (alphabetWebEngine != null) {
+            alphabetWebEngine.loadContent(
+                    "<html><body style='font-family:Georgia,serif;"
+                            + "padding:16px;color:#222;background:#fff;'>"
+                            + escapeHtml(message)
+                            + "</body></html>",
+                    "text/html"
+            );
+        }
+    }
+
+    private String buildHebrewAlphabetHtml() {
+        return """
+                <html>
+                <head>
+                <meta charset="UTF-8">
+                <style>
+                    body {
+                        font-family: Georgia, 'Times New Roman', serif;
+                        margin: 14px;
+                        color: #222;
+                        background: #fff;
+                    }
+                    h2 { margin-top: 0; }
+                    .note {
+                        margin-bottom: 12px;
+                        line-height: 1.45;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 15px;
+                    }
+                    th, td {
+                        border-bottom: 1px solid #ddd;
+                        padding: 7px 6px;
+                        text-align: left;
+                    }
+                    th {
+                        background: #f4f1e8;
+                    }
+                    .letter {
+                        font-size: 27px;
+                        font-family: 'Noto Sans Hebrew',
+                                     'DejaVu Sans', sans-serif;
+                        text-align: center;
+                        direction: rtl;
+                    }
+                    .final {
+                        color: #6b4d2e;
+                    }
+                </style>
+                </head>
+                <body>
+                <h2>Hebrew Alphabet</h2>
+                <div class="note">
+                    Biblical Hebrew is read <b>right to left</b>.
+                    Hebrew has 22 basic consonant letters. Five letters
+                    also have a special final form when they occur at the
+                    end of a word.
+                </div>
+                <table>
+                    <tr>
+                        <th>Letter</th>
+                        <th>Name</th>
+                        <th>Common transliteration</th>
+                    </tr>
+                    <tr><td class="letter">א</td><td>Aleph</td><td>ʾ / silent carrier</td></tr>
+                    <tr><td class="letter">ב</td><td>Bet</td><td>b / v</td></tr>
+                    <tr><td class="letter">ג</td><td>Gimel</td><td>g</td></tr>
+                    <tr><td class="letter">ד</td><td>Dalet</td><td>d</td></tr>
+                    <tr><td class="letter">ה</td><td>He</td><td>h</td></tr>
+                    <tr><td class="letter">ו</td><td>Vav</td><td>w / v</td></tr>
+                    <tr><td class="letter">ז</td><td>Zayin</td><td>z</td></tr>
+                    <tr><td class="letter">ח</td><td>Het</td><td>ḥ / ch</td></tr>
+                    <tr><td class="letter">ט</td><td>Tet</td><td>ṭ / t</td></tr>
+                    <tr><td class="letter">י</td><td>Yod</td><td>y</td></tr>
+                    <tr><td class="letter">כ <span class="final">ך</span></td><td>Kaf / final Kaf</td><td>k / kh</td></tr>
+                    <tr><td class="letter">ל</td><td>Lamed</td><td>l</td></tr>
+                    <tr><td class="letter">מ <span class="final">ם</span></td><td>Mem / final Mem</td><td>m</td></tr>
+                    <tr><td class="letter">נ <span class="final">ן</span></td><td>Nun / final Nun</td><td>n</td></tr>
+                    <tr><td class="letter">ס</td><td>Samekh</td><td>s</td></tr>
+                    <tr><td class="letter">ע</td><td>Ayin</td><td>ʿ / guttural</td></tr>
+                    <tr><td class="letter">פ <span class="final">ף</span></td><td>Pe / final Pe</td><td>p / f</td></tr>
+                    <tr><td class="letter">צ <span class="final">ץ</span></td><td>Tsade / final Tsade</td><td>ṣ / ts</td></tr>
+                    <tr><td class="letter">ק</td><td>Qof</td><td>q / k</td></tr>
+                    <tr><td class="letter">ר</td><td>Resh</td><td>r</td></tr>
+                    <tr><td class="letter">ש</td><td>Shin / Sin</td><td>sh / s</td></tr>
+                    <tr><td class="letter">ת</td><td>Tav</td><td>t</td></tr>
+                </table>
+                </body>
+                </html>
+                """;
+    }
+
+    private String buildGreekAlphabetHtml() {
+        return """
+                <html>
+                <head>
+                <meta charset="UTF-8">
+                <style>
+                    body {
+                        font-family: Georgia, 'Times New Roman', serif;
+                        margin: 14px;
+                        color: #222;
+                        background: #fff;
+                    }
+                    h2 { margin-top: 0; }
+                    .note {
+                        margin-bottom: 12px;
+                        line-height: 1.45;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 15px;
+                    }
+                    th, td {
+                        border-bottom: 1px solid #ddd;
+                        padding: 7px 6px;
+                        text-align: left;
+                    }
+                    th {
+                        background: #f4f1e8;
+                    }
+                    .letter {
+                        font-size: 25px;
+                        font-family: 'DejaVu Sans', sans-serif;
+                        text-align: center;
+                    }
+                </style>
+                </head>
+                <body>
+                <h2>Greek Alphabet</h2>
+                <div class="note">
+                    The New Testament was written in Koine Greek.
+                    Greek is read <b>left to right</b> and has 24 letters.
+                </div>
+                <table>
+                    <tr>
+                        <th>Letter</th>
+                        <th>Name</th>
+                        <th>Common transliteration</th>
+                    </tr>
+                    <tr><td class="letter">Α α</td><td>Alpha</td><td>a</td></tr>
+                    <tr><td class="letter">Β β</td><td>Beta</td><td>b</td></tr>
+                    <tr><td class="letter">Γ γ</td><td>Gamma</td><td>g</td></tr>
+                    <tr><td class="letter">Δ δ</td><td>Delta</td><td>d</td></tr>
+                    <tr><td class="letter">Ε ε</td><td>Epsilon</td><td>e</td></tr>
+                    <tr><td class="letter">Ζ ζ</td><td>Zeta</td><td>z</td></tr>
+                    <tr><td class="letter">Η η</td><td>Eta</td><td>ē / e</td></tr>
+                    <tr><td class="letter">Θ θ</td><td>Theta</td><td>th</td></tr>
+                    <tr><td class="letter">Ι ι</td><td>Iota</td><td>i</td></tr>
+                    <tr><td class="letter">Κ κ</td><td>Kappa</td><td>k</td></tr>
+                    <tr><td class="letter">Λ λ</td><td>Lambda</td><td>l</td></tr>
+                    <tr><td class="letter">Μ μ</td><td>Mu</td><td>m</td></tr>
+                    <tr><td class="letter">Ν ν</td><td>Nu</td><td>n</td></tr>
+                    <tr><td class="letter">Ξ ξ</td><td>Xi</td><td>x / ks</td></tr>
+                    <tr><td class="letter">Ο ο</td><td>Omicron</td><td>o</td></tr>
+                    <tr><td class="letter">Π π</td><td>Pi</td><td>p</td></tr>
+                    <tr><td class="letter">Ρ ρ</td><td>Rho</td><td>r</td></tr>
+                    <tr><td class="letter">Σ σ / ς</td><td>Sigma / final Sigma</td><td>s</td></tr>
+                    <tr><td class="letter">Τ τ</td><td>Tau</td><td>t</td></tr>
+                    <tr><td class="letter">Υ υ</td><td>Upsilon</td><td>y / u</td></tr>
+                    <tr><td class="letter">Φ φ</td><td>Phi</td><td>ph / f</td></tr>
+                    <tr><td class="letter">Χ χ</td><td>Chi</td><td>ch / kh</td></tr>
+                    <tr><td class="letter">Ψ ψ</td><td>Psi</td><td>ps</td></tr>
+                    <tr><td class="letter">Ω ω</td><td>Omega</td><td>ō / o</td></tr>
+                </table>
+                </body>
+                </html>
+                """;
     }
 
     private String bibleHubBookSlug(String book) {
