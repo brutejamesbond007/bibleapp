@@ -953,19 +953,26 @@ public class BibleReader extends Application {
          * Hebrew / Greek belongs with the lower study area alongside
          * Study Notes and Journal.
          */
+        /*
+         * Maps belongs in the lower study area between Study Notes
+         * and Journal, followed by Hebrew / Greek.
+         */
+        if (!rightSideTabs.getTabs().contains(mapsTab)) {
+            rightSideTabs.getTabs().add(1, mapsTab);
+        }
         rightSideTabs.getTabs().add(originalLanguageTab);
 
         /*
-         * Book Introduction is shown only on the first chronological
-         * reading day in which a Bible book appears.
+         * Book Introduction remains available throughout every
+         * chapter of the current Bible book so it can be reviewed at any time.
          *
-         * Personality Profiles, Charts, and Maps remain in the
+         * Personality Profiles and Charts remain in the
          * upper information area.
          */
         topInfoTabs = new TabPane(
+                bookIntroductionTab,
                 personalityProfileTab,
-                chartsTab,
-                mapsTab
+                chartsTab
         );
         topInfoTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -2608,7 +2615,9 @@ public class BibleReader extends Application {
                         && bookIntroductionTab != null
                         && personalityProfileTab != null
         ) {
-            topInfoTabs.getTabs().remove(bookIntroductionTab);
+            if (!topInfoTabs.getTabs().contains(bookIntroductionTab)) {
+                topInfoTabs.getTabs().add(0, bookIntroductionTab);
+            }
 
             if (!topInfoTabs.getTabs().contains(personalityProfileTab)) {
                 topInfoTabs.getTabs().add(personalityProfileTab);
@@ -2616,10 +2625,6 @@ public class BibleReader extends Application {
 
             if (chartsTab != null && !topInfoTabs.getTabs().contains(chartsTab)) {
                 topInfoTabs.getTabs().add(chartsTab);
-            }
-
-            if (mapsTab != null && !topInfoTabs.getTabs().contains(mapsTab)) {
-                topInfoTabs.getTabs().add(mapsTab);
             }
 
             topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -4101,24 +4106,17 @@ public class BibleReader extends Application {
                         || bookIntroductionTab == null
                         || personalityProfileTab == null
                         || chartsTab == null
-                        || mapsTab == null
-                        || originalLanguageTab == null
         ) {
             return;
         }
 
         /*
-         * Default for an ordinary reading day:
-         * hide the Introduction tab completely and show Personality
-         * Profiles only.
-         *
-         * Example:
-         *     September 3 — Ezekiel 40:1-37
-         *
-         * Ezekiel was introduced earlier in the Reading Plan, so the
-         * Book Introduction tab is not shown on this day.
+         * Book Introduction now remains available for every chapter/day.
+         * It is never removed after the book's first appearance.
          */
-        topInfoTabs.getTabs().remove(bookIntroductionTab);
+        if (!topInfoTabs.getTabs().contains(bookIntroductionTab)) {
+            topInfoTabs.getTabs().add(0, bookIntroductionTab);
+        }
 
         if (!topInfoTabs.getTabs().contains(personalityProfileTab)) {
             topInfoTabs.getTabs().add(personalityProfileTab);
@@ -4128,16 +4126,11 @@ public class BibleReader extends Application {
             topInfoTabs.getTabs().add(chartsTab);
         }
 
-        if (!topInfoTabs.getTabs().contains(mapsTab)) {
-            topInfoTabs.getTabs().add(mapsTab);
-        }
-
-        topInfoTabs.getSelectionModel().select(personalityProfileTab);
-
         Map<String, Set<Integer>> currentBooks =
                 extractReadingChapterMap(referenceText);
 
         if (currentBooks.isEmpty()) {
+            topInfoTabs.getSelectionModel().select(personalityProfileTab);
             return;
         }
 
@@ -4150,10 +4143,13 @@ public class BibleReader extends Application {
         }
 
         /*
-         * No new Bible book begins today, so there is intentionally no
-         * Book Introduction tab.
+         * The introduction remains available even when this is not the
+         * first day of the book. In that case, leave the normal study tab
+         * selected and let updateBookIntroductionsForReference(...) keep
+         * the current book introduction loaded in the persistent tab.
          */
         if (newBooks.isEmpty()) {
+            topInfoTabs.getSelectionModel().select(personalityProfileTab);
             return;
         }
 
@@ -4167,24 +4163,15 @@ public class BibleReader extends Application {
         }
 
         if (bookToShow == null) {
+            topInfoTabs.getSelectionModel().select(personalityProfileTab);
             return;
         }
 
         /*
-         * A new Bible book begins today.  Add the Introduction tab,
-         * place it first, load the introduction, and select it
-         * automatically.
-         *
-         * Example:
-         *     January 1 — Genesis 1...
-         *
-         * Genesis is appearing for the first time, so the Genesis
-         * introduction is shown.
+         * On the first appearance of a new Bible book, automatically open
+         * its introduction. Afterwards the tab stays available so the
+         * reader can return to it at any time.
          */
-        if (!topInfoTabs.getTabs().contains(bookIntroductionTab)) {
-            topInfoTabs.getTabs().add(0, bookIntroductionTab);
-        }
-
         bookIntroductionSelector.setValue(bookToShow);
         loadSelectedBookIntroduction();
 
@@ -4192,13 +4179,13 @@ public class BibleReader extends Application {
 
         if (newBooks.size() == 1) {
             bookIntroductionStatusLabel.setText(
-                    "First appearance of " + bookToShow
-                            + " in the chronological Reading Plan."
+                    "Book introduction for " + bookToShow
+                            + ". This tab remains available throughout the book."
             );
         } else {
             bookIntroductionStatusLabel.setText(
-                    "New books begin in today's chronological reading. "
-                            + "Use the selector to view their introductions."
+                    "New books begin in today's reading. "
+                            + "Use the selector to review their introductions."
             );
         }
     }
