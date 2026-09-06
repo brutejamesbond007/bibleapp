@@ -768,7 +768,7 @@ public class BibleReader extends Application {
 
         // ------------------------------------------------------------
         // Top-right information area:
-        // [ Book Introduction ] [ Personality Profiles ] [ Charts ]
+        // [ Book Introduction ] [ Personality Profiles ] [ Charts ] [ Maps ]
         // ------------------------------------------------------------
 
         bookIntroductionTitleLabel = new Label("Book Introduction");
@@ -954,25 +954,25 @@ public class BibleReader extends Application {
          * Study Notes and Journal.
          */
         /*
-         * Maps belongs in the lower study area between Study Notes
-         * and Journal, followed by Hebrew / Greek.
+         * Hebrew / Greek belongs in the lower study area between
+         * Study Notes and Journal.
          */
-        if (!rightSideTabs.getTabs().contains(mapsTab)) {
-            rightSideTabs.getTabs().add(1, mapsTab);
+        if (!rightSideTabs.getTabs().contains(originalLanguageTab)) {
+            rightSideTabs.getTabs().add(1, originalLanguageTab);
         }
-        rightSideTabs.getTabs().add(originalLanguageTab);
 
         /*
          * Book Introduction remains available throughout every
          * chapter of the current Bible book so it can be reviewed at any time.
          *
-         * Personality Profiles and Charts remain in the
+         * Personality Profiles, Charts, and Maps remain in the
          * upper information area.
          */
         topInfoTabs = new TabPane(
                 bookIntroductionTab,
                 personalityProfileTab,
-                chartsTab
+                chartsTab,
+                mapsTab
         );
         topInfoTabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         topInfoTabs.getSelectionModel().select(personalityProfileTab);
@@ -2627,6 +2627,10 @@ public class BibleReader extends Application {
                 topInfoTabs.getTabs().add(chartsTab);
             }
 
+            if (mapsTab != null && !topInfoTabs.getTabs().contains(mapsTab)) {
+                topInfoTabs.getTabs().add(mapsTab);
+            }
+
             topInfoTabs.getSelectionModel().select(personalityProfileTab);
         }
 
@@ -4106,6 +4110,7 @@ public class BibleReader extends Application {
                         || bookIntroductionTab == null
                         || personalityProfileTab == null
                         || chartsTab == null
+                        || mapsTab == null
         ) {
             return;
         }
@@ -4124,6 +4129,10 @@ public class BibleReader extends Application {
 
         if (!topInfoTabs.getTabs().contains(chartsTab)) {
             topInfoTabs.getTabs().add(chartsTab);
+        }
+
+        if (!topInfoTabs.getTabs().contains(mapsTab)) {
+            topInfoTabs.getTabs().add(mapsTab);
         }
 
         Map<String, Set<Integer>> currentBooks =
